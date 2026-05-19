@@ -1,0 +1,9 @@
+{
+  "name": "dominoes",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/game.test.mjs test/vision.test.mjs",
+    "serve": "python3 -m http.server 8000"
+  }
+}

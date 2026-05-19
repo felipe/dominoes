@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <title>dominoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="app">
+    <header>
+      <h1>dominoes</h1>
+      <button id="newGameBtn" type="button" hidden>new game</button>
+    </header>
+
+    <section id="setup" class="card">
+      <h2>new game</h2>
+      <form id="setupForm">
+        <label>
+          your side
+          <input name="us" type="text" value="Us" autocomplete="off" required />
+        </label>
+        <label>
+          their side
+          <input name="them" type="text" value="Them" autocomplete="off" required />
+        </label>
+        <label>
+          play to
+          <input name="target" type="number" min="50" max="500" step="10" value="200" required />
+        </label>
+        <fieldset>
+          <legend>rules</legend>
+          <label class="check">
+            <input name="ruleBlocked" type="checkbox" checked />
+            count blocked-game pips to the lower hand
+          </label>
+          <label class="check">
+            <input name="ruleRoundTo5" type="checkbox" />
+            round each hand to nearest 5
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>bonus buttons</legend>
+          <div id="bonusRows"></div>
+          <button type="button" id="addBonusBtn" class="ghost">+ add bonus</button>
+        </fieldset>
+
+        <button type="submit">start</button>
+      </form>
+    </section>
+
+    <section id="game" class="card" hidden>
+      <div class="scoreboard">
+        <div class="score" data-side="us">
+          <div class="side-name" id="usName"></div>
+          <div class="side-total" id="usTotal">0</div>
+        </div>
+        <div class="score" data-side="them">
+          <div class="side-name" id="themName"></div>
+          <div class="side-total" id="themTotal">0</div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <span>play to <strong id="targetLabel"></strong></span>
+        <span id="rulesLabel"></span>
+      </div>
+
+      <div id="bonusChips" class="chips"></div>
+
+      <form id="roundForm">
+        <div class="round-row">
+          <div class="rocker" role="radiogroup" aria-label="winning side">
+            <input type="radio" name="winner" value="us" id="rUs" required />
+            <label for="rUs" id="rockerUs">Us</label>
+            <input type="radio" name="winner" value="them" id="rThem" />
+            <label for="rThem" id="rockerThem">Them</label>
+          </div>
+          <input
+            name="points"
+            type="number"
+            min="0"
+            max="200"
+            step="1"
+            inputmode="numeric"
+            placeholder="pts"
+            required
+          />
+          <button type="button" id="photoBtn" class="ghost" aria-label="count pips from photo" title="count pips from photo">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+          </button>
+          <button type="submit" aria-label="add round">+</button>
+        </div>
+        <input type="hidden" name="note" />
+        <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
+        <div id="photoStatus" class="photo-status" hidden></div>
+      </form>
+
+      <section id="photoReview" class="photo-review" hidden aria-label="select dominoes to count">
+        <div class="photo-review-wrap">
+          <img id="photoReviewImg" alt="captured dominoes photo" />
+          <svg id="photoReviewSvg" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <p class="photo-review-hint">tap each domino in the loser's hand</p>
+        <div class="photo-review-footer">
+          <span>selected: <strong id="photoReviewTotal">0</strong> pips</span>
+          <div class="photo-review-actions">
+            <button type="button" id="photoReviewCancel" class="ghost">cancel</button>
+            <button type="button" id="photoReviewUse">use</button>
+          </div>
+        </div>
+      </section>
+
+      <ol id="history" reversed></ol>
+
+      <div id="winner" hidden></div>
+    </section>
+
+    <footer>
+      <small>state saved locally in this browser. <a href="#" id="resetLink">reset</a></small>
+    </footer>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
