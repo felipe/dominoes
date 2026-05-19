@@ -26,7 +26,7 @@ export const DEFAULTS = {
   pipDetectMaxAreaFrac: 0.003,
   pipMedianAreaLow: 0.3,
   pipMedianAreaHigh: 3,
-  clusterDilationFactor: 2.5, // expressed in pip radii
+  clusterDilationFactor: 3, // expressed in pip radii
 };
 
 export async function countPipsFromFile(file) {
@@ -176,16 +176,37 @@ export function findPipClusters(gray, W, H, opts = {}) {
   }
 
   const pipRadius = Math.sqrt(medianSize / Math.PI);
-  const maxDist = Math.max(
-    Math.round(pipRadius * cfg.clusterDilationFactor),
-    3,
-  );
+  // Dilate each pip's disc enough to bridge across a tile's divider line
+  // (~6 pip-radii is typical for real photos). Barriers — the long dark
+  // structures classified above — block expansion only when they're
+  // substantially longer than a single divider, so a chain's outer
+  // boundaries still separate tiles but the inner divider of one tile
+  // does not split it.
+  const dilation = Math.max(pipRadius * cfg.clusterDilationFactor, 6);
+  const dilationCeil = Math.ceil(dilation);
 
+  // Classify each barrier blob: keep only the long ones as walls.
+  // The threshold is in pixels of the longest blob extent. A divider
+  // inside a tile is ~half-tile-height; a chain boundary spans many
+  // tiles. Treat anything bigger than ~10 pip-radii as a wall.
+  const wallThreshold = pipRadius * 10;
+  const wallBlob = new Uint8Array(allBlobs.length);
+  for (let i = 0; i < allBlobs.length; i++) {
+    if (isPipBlob[i]) continue;
+    const b = allBlobs[i];
+    const ext = Math.max(b.maxX - b.minX + 1, b.maxY - b.minY + 1);
+    if (ext >= wallThreshold) wallBlob[i] = 1;
+  }
+  const walls = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    if (labels[i] >= 0 && wallBlob[labels[i]]) walls[i] = 1;
+  }
+
+  // BFS expansion: from each pip pixel, expand through bright pixels
+  // and other pips, stopped by wall pixels.
   const dist = new Int16Array(W * H).fill(-1);
   const queue = new Int32Array(W * H);
   let qTail = 0;
-  // Seed the BFS with every pip pixel (use the labeled image so seeds
-  // cover the whole pip blob, not just a centroid).
   for (let i = 0; i < W * H; i++) {
     if (labels[i] >= 0 && isPipBlob[labels[i]]) {
       dist[i] = 0;
@@ -196,34 +217,34 @@ export function findPipClusters(gray, W, H, opts = {}) {
   while (qHead < qTail) {
     const p = queue[qHead++];
     const d = dist[p];
-    if (d >= maxDist) continue;
+    if (d >= dilationCeil) continue;
     const px = p % W;
     const py = (p - px) / W;
     const nd = d + 1;
     if (px > 0) {
       const a = p - 1;
-      if (!barrier[a] && dist[a] === -1) {
+      if (!walls[a] && dist[a] === -1) {
         dist[a] = nd;
         queue[qTail++] = a;
       }
     }
     if (px < W - 1) {
       const a = p + 1;
-      if (!barrier[a] && dist[a] === -1) {
+      if (!walls[a] && dist[a] === -1) {
         dist[a] = nd;
         queue[qTail++] = a;
       }
     }
     if (py > 0) {
       const a = p - W;
-      if (!barrier[a] && dist[a] === -1) {
+      if (!walls[a] && dist[a] === -1) {
         dist[a] = nd;
         queue[qTail++] = a;
       }
     }
     if (py < H - 1) {
       const a = p + W;
-      if (!barrier[a] && dist[a] === -1) {
+      if (!walls[a] && dist[a] === -1) {
         dist[a] = nd;
         queue[qTail++] = a;
       }
@@ -295,15 +316,11 @@ function areHalves(a, b, maxGap) {
   const bh = b.maxY - b.minY + 1;
   const horizGap = Math.max(a.minX, b.minX) - Math.min(a.maxX, b.maxX);
   const yOverlap = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
-  const horiz = horizGap >= -2 && horizGap < maxGap && yOverlap > Math.min(ah, bh) * 0.6;
+  const horiz = horizGap >= -2 && horizGap < maxGap && yOverlap > Math.min(ah, bh) * 0.4;
   const vertGap = Math.max(a.minY, b.minY) - Math.min(a.maxY, b.maxY);
   const xOverlap = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
-  const vert = vertGap >= -2 && vertGap < maxGap && xOverlap > Math.min(aw, bw) * 0.6;
-  if (!horiz && !vert) return false;
-  const areaA = aw * ah;
-  const areaB = bw * bh;
-  const ratio = Math.min(areaA, areaB) / Math.max(areaA, areaB);
-  return ratio > 0.35;
+  const vert = vertGap >= -2 && vertGap < maxGap && xOverlap > Math.min(aw, bw) * 0.4;
+  return horiz || vert;
 }
 
 function centerDist(a, b) {
