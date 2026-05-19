@@ -23,7 +23,9 @@ npm run serve # python3 -m http.server 8000
 
 ## Photo pip counting
 
-The camera button on the round row opens the camera (mobile) or file picker. The `vision.js` pipeline (find bright tile-face regions → local Otsu threshold inside each region → connected components → size and roundness filter) runs entirely in the browser — no upload, no library. It's accurate on flat, well-lit hands against a plain or felt background, and approximate on heavily rotated or crowded scenes. Treat the number as a suggestion and edit before adding the round.
+The camera button on the round row opens the camera (mobile) or file picker. The `vision.js` pipeline (find bright tile-face regions → local Otsu threshold inside each region → connected components → size and roundness filter) runs entirely in the browser — no upload, no library.
+
+**Take the photo top-down on a flat surface.** That's the supported case. If no tile face is detected, the app says "no domino tile detected — take a top-down photo on a flat surface" and waits for you to retry or enter the points manually. Treat the count as a suggestion and confirm before adding the round.
 
 The pure helpers (`otsuArr`, `labelComponents`, `roundness`, `findTileRegions`, `countPipsFromGray`) are tested in `test/vision.test.mjs` against synthetic grayscale arrays so the pipeline doesn't regress silently.
 

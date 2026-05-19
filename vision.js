@@ -61,19 +61,20 @@ export function grayscaleFromRGBA(data) {
   return gray;
 }
 
+export class NoTileError extends Error {
+  constructor() {
+    super("no tile detected");
+    this.name = "NoTileError";
+  }
+}
+
 export function countPipsFromGray(gray, W, H, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
   const regions = findTileRegions(gray, W, H, cfg);
-  if (regions.length === 0) {
-    return countPipsInRegion(gray, W, H, fullRegion(W, H), cfg);
-  }
+  if (regions.length === 0) throw new NoTileError();
   let total = 0;
   for (const r of regions) total += countPipsInRegion(gray, W, H, r, cfg);
   return total;
-}
-
-function fullRegion(W, H) {
-  return { minX: 0, minY: 0, maxX: W - 1, maxY: H - 1, size: W * H };
 }
 
 export function findTileRegions(gray, W, H, cfg = DEFAULTS) {

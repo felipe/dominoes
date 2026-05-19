@@ -8,6 +8,7 @@ import {
   findTileRegions,
   countPipsFromGray,
   grayscaleFromRGBA,
+  NoTileError,
 } from "../vision.js";
 
 // ---------- helpers ----------
@@ -187,6 +188,14 @@ test("countPipsFromGray: 5-4 returns 9", () => {
 test("countPipsFromGray: 6-3 returns 9 (was a stress-test failure pre-fix)", () => {
   const { gray, W, H } = drawDomino({ patternA: P[6], patternB: P[3] });
   assert.equal(countPipsFromGray(gray, W, H), 9);
+});
+
+test("countPipsFromGray: throws NoTileError when no tile face is found", () => {
+  // A uniformly dark image — no bright tile face to detect.
+  const W = 200;
+  const H = 100;
+  const gray = makeGray(W, H, 30);
+  assert.throws(() => countPipsFromGray(gray, W, H), NoTileError);
 });
 
 test("countPipsFromGray: three-tile hand on felt sums correctly", () => {

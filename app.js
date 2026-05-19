@@ -7,7 +7,7 @@ import {
   normalizeBonuses,
   DEFAULT_BONUSES,
 } from "./game.js";
-import { countPipsFromFile } from "./vision.js";
+import { countPipsFromFile, NoTileError } from "./vision.js";
 
 const STORAGE_KEY = "dominoes:v1";
 
@@ -207,7 +207,12 @@ photoInput.addEventListener("change", async () => {
     roundForm.elements.note.value = "photo";
     photoStatus.textContent = `counted ${count} pip${count === 1 ? "" : "s"} — adjust if needed`;
   } catch (err) {
-    photoStatus.textContent = "couldn't read that photo — enter manually";
+    if (err instanceof NoTileError) {
+      photoStatus.textContent =
+        "no domino tile detected — take a top-down photo on a flat surface";
+    } else {
+      photoStatus.textContent = "couldn't read that photo — enter manually";
+    }
   } finally {
     photoInput.value = "";
   }
