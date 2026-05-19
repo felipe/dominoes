@@ -40,6 +40,13 @@
             round each hand to nearest 5
           </label>
         </fieldset>
+
+        <fieldset>
+          <legend>bonus buttons</legend>
+          <div id="bonusRows"></div>
+          <button type="button" id="addBonusBtn" class="ghost">+ add bonus</button>
+        </fieldset>
+
         <button type="submit">start</button>
       </form>
     </section>
@@ -61,23 +68,32 @@
         <span id="rulesLabel"></span>
       </div>
 
+      <div id="bonusChips" class="chips"></div>
+
       <form id="roundForm">
-        <label>
-          winning side
-          <select name="winner" required>
-            <option value="us" id="winnerUs"></option>
-            <option value="them" id="winnerThem"></option>
-          </select>
-        </label>
-        <label>
-          points
-          <input name="points" type="number" min="0" max="200" step="1" required />
-        </label>
-        <label>
-          note (optional)
-          <input name="note" type="text" autocomplete="off" placeholder="e.g. capicúa" />
-        </label>
-        <button type="submit">add round</button>
+        <div class="round-row">
+          <div class="rocker" role="radiogroup" aria-label="winning side">
+            <input type="radio" name="winner" value="us" id="rUs" required />
+            <label for="rUs" id="rockerUs">Us</label>
+            <input type="radio" name="winner" value="them" id="rThem" />
+            <label for="rThem" id="rockerThem">Them</label>
+          </div>
+          <input
+            name="points"
+            type="number"
+            min="0"
+            max="200"
+            step="1"
+            inputmode="numeric"
+            placeholder="pts"
+            required
+          />
+          <button type="button" id="photoBtn" class="ghost" aria-label="count pips from photo" title="count from photo">📷</button>
+          <button type="submit" aria-label="add round">+</button>
+        </div>
+        <input type="hidden" name="note" />
+        <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
+        <div id="photoStatus" class="photo-status" hidden></div>
       </form>
 
       <ol id="history" reversed></ol>

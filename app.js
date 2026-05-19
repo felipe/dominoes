@@ -1,3 +1,14 @@
+import {
+  createGame,
+  addRound,
+  undoRound,
+  totals,
+  winner,
+  normalizeBonuses,
+  DEFAULT_BONUSES,
+} from "./game.js";
+import { countPipsFromFile } from "./vision.js";
+
 const STORAGE_KEY = "dominoes:v1";
 
 const $ = (sel) => document.querySelector(sel);
@@ -10,6 +21,9 @@ const historyEl = $("#history");
 const winnerEl = $("#winner");
 const newGameBtn = $("#newGameBtn");
 const resetLink = $("#resetLink");
+const bonusRowsEl = $("#bonusRows");
+const addBonusBtn = $("#addBonusBtn");
+const bonusChipsEl = $("#bonusChips");
 
 const usNameEl = $("#usName");
 const themNameEl = $("#themName");
@@ -17,15 +31,21 @@ const usTotalEl = $("#usTotal");
 const themTotalEl = $("#themTotal");
 const targetLabel = $("#targetLabel");
 const rulesLabel = $("#rulesLabel");
-const winnerUsOpt = $("#winnerUs");
-const winnerThemOpt = $("#winnerThem");
+const rockerUsLabel = $("#rockerUs");
+const rockerThemLabel = $("#rockerThem");
+const photoBtn = $("#photoBtn");
+const photoInput = $("#photoInput");
+const photoStatus = $("#photoStatus");
 
-let state = load() ?? null;
+let state = load();
 
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed.bonuses) parsed.bonuses = normalizeBonuses(DEFAULT_BONUSES);
+    return parsed;
   } catch {
     return null;
   }
@@ -35,22 +55,41 @@ function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function totals() {
-  const t = { us: 0, them: 0 };
-  for (const r of state.rounds) t[r.winner] += r.points;
-  return t;
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[c]);
 }
 
-function winner() {
-  const t = totals();
-  if (t.us >= state.target && t.us >= t.them) return "us";
-  if (t.them >= state.target && t.them >= t.us) return "them";
-  return null;
+function renderBonusRows(bonuses) {
+  bonusRowsEl.innerHTML = "";
+  bonuses.forEach((b, i) => bonusRowsEl.appendChild(makeBonusRow(b.label, b.points, i)));
 }
 
-function applyRoundingRule(points) {
-  if (!state.rules.roundTo5) return points;
-  return Math.round(points / 5) * 5;
+function makeBonusRow(label = "", points = "", i = bonusRowsEl.children.length) {
+  const row = document.createElement("div");
+  row.className = "bonus-row";
+  row.innerHTML = `
+    <input type="text" placeholder="label" value="${escapeHtml(String(label))}" data-bonus="label" autocomplete="off" />
+    <input type="number" min="0" max="200" placeholder="pts" value="${points === "" ? "" : Number(points)}" data-bonus="points" />
+    <button type="button" class="ghost" data-remove="${i}" aria-label="remove">×</button>
+  `;
+  return row;
+}
+
+function readBonusesFromForm() {
+  const rows = bonusRowsEl.querySelectorAll(".bonus-row");
+  const out = [];
+  rows.forEach((row) => {
+    const label = row.querySelector('[data-bonus="label"]').value;
+    const points = row.querySelector('[data-bonus="points"]').value;
+    out.push({ label, points });
+  });
+  return normalizeBonuses(out);
 }
 
 function render() {
@@ -58,6 +97,7 @@ function render() {
     setupEl.hidden = false;
     gameEl.hidden = true;
     newGameBtn.hidden = true;
+    renderBonusRows(DEFAULT_BONUSES);
     return;
   }
 
@@ -67,12 +107,10 @@ function render() {
 
   usNameEl.textContent = state.names.us;
   themNameEl.textContent = state.names.them;
-  winnerUsOpt.textContent = state.names.us;
-  winnerUsOpt.value = "us";
-  winnerThemOpt.textContent = state.names.them;
-  winnerThemOpt.value = "them";
+  rockerUsLabel.textContent = state.names.us;
+  rockerThemLabel.textContent = state.names.them;
 
-  const t = totals();
+  const t = totals(state);
   usTotalEl.textContent = t.us;
   themTotalEl.textContent = t.them;
 
@@ -81,6 +119,17 @@ function render() {
   if (state.rules.blocked) ruleBits.push("blocked → lower hand");
   if (state.rules.roundTo5) ruleBits.push("round to 5");
   rulesLabel.textContent = ruleBits.join(" · ");
+
+  bonusChipsEl.innerHTML = "";
+  state.bonuses.forEach((b) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.dataset.points = String(b.points);
+    chip.dataset.label = b.label;
+    chip.innerHTML = `${escapeHtml(b.label)} <span class="chip-pts">+${b.points}</span>`;
+    bonusChipsEl.appendChild(chip);
+  });
 
   historyEl.innerHTML = "";
   state.rounds.forEach((r, i) => {
@@ -96,7 +145,7 @@ function render() {
     historyEl.appendChild(li);
   });
 
-  const w = winner();
+  const w = winner(state);
   if (w) {
     winnerEl.hidden = false;
     winnerEl.textContent = `${state.names[w]} win`;
@@ -106,56 +155,80 @@ function render() {
   }
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[c]);
-}
-
 setupForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const fd = new FormData(setupForm);
-  state = {
-    names: {
-      us: String(fd.get("us")).trim() || "Us",
-      them: String(fd.get("them")).trim() || "Them",
-    },
-    target: Math.max(50, Number(fd.get("target")) || 200),
+  state = createGame({
+    us: fd.get("us"),
+    them: fd.get("them"),
+    target: fd.get("target"),
     rules: {
       blocked: fd.get("ruleBlocked") === "on",
       roundTo5: fd.get("ruleRoundTo5") === "on",
     },
-    rounds: [],
-    startedAt: Date.now(),
-  };
+    bonuses: readBonusesFromForm(),
+  });
   save();
   render();
+});
+
+addBonusBtn.addEventListener("click", () => {
+  bonusRowsEl.appendChild(makeBonusRow());
+});
+
+bonusRowsEl.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-remove]");
+  if (!btn) return;
+  btn.closest(".bonus-row").remove();
+});
+
+bonusChipsEl.addEventListener("click", (e) => {
+  const chip = e.target.closest("button.chip");
+  if (!chip) return;
+  roundForm.elements.points.value = chip.dataset.points;
+  roundForm.elements.note.value = chip.dataset.label;
+  roundForm.elements.points.focus();
+});
+
+photoBtn.addEventListener("click", () => photoInput.click());
+
+photoInput.addEventListener("change", async () => {
+  const file = photoInput.files && photoInput.files[0];
+  if (!file) return;
+  photoStatus.hidden = false;
+  photoStatus.textContent = "counting pips…";
+  try {
+    const count = await countPipsFromFile(file);
+    roundForm.elements.points.value = String(count);
+    roundForm.elements.note.value = "photo";
+    photoStatus.textContent = `counted ${count} pip${count === 1 ? "" : "s"} — adjust if needed`;
+  } catch (err) {
+    photoStatus.textContent = "couldn't read that photo — enter manually";
+  } finally {
+    photoInput.value = "";
+  }
 });
 
 roundForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const fd = new FormData(roundForm);
-  const points = applyRoundingRule(Math.max(0, Number(fd.get("points")) || 0));
-  state.rounds.push({
+  state = addRound(state, {
     winner: fd.get("winner") === "us" ? "us" : "them",
-    points,
-    note: String(fd.get("note") || "").trim(),
-    at: Date.now(),
+    points: fd.get("points"),
+    note: String(fd.get("note") || ""),
   });
   save();
   roundForm.reset();
+  roundForm.elements.note.value = "";
+  photoStatus.hidden = true;
+  photoStatus.textContent = "";
   render();
 });
 
 historyEl.addEventListener("click", (e) => {
   const btn = e.target.closest("button.undo");
   if (!btn) return;
-  const i = Number(btn.dataset.i);
-  state.rounds.splice(i, 1);
+  state = undoRound(state, Number(btn.dataset.i));
   save();
   render();
 });
