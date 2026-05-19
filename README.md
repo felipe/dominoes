@@ -23,7 +23,9 @@ npm run serve # python3 -m http.server 8000
 
 ## Photo pip counting
 
-The camera button on the round row opens the camera (mobile) or file picker. The naive in-`vision.js` pipeline (Otsu threshold → connected components → roundness filter) runs entirely in the browser — no upload, no library. It works on flat, well-lit hands against a plain background. Real-table photos will be wrong often — the number is a suggestion, edit before adding the round.
+The camera button on the round row opens the camera (mobile) or file picker. The `vision.js` pipeline (find bright tile-face regions → local Otsu threshold inside each region → connected components → size and roundness filter) runs entirely in the browser — no upload, no library. It's accurate on flat, well-lit hands against a plain or felt background, and approximate on heavily rotated or crowded scenes. Treat the number as a suggestion and edit before adding the round.
+
+The pure helpers (`otsuArr`, `labelComponents`, `roundness`, `findTileRegions`, `countPipsFromGray`) are tested in `test/vision.test.mjs` against synthetic grayscale arrays so the pipeline doesn't regress silently.
 
 ## Deploy
 
