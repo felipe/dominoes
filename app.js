@@ -52,7 +52,11 @@ function load() {
 }
 
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // storage unavailable (quota, private mode, disabled) — keep playing in-memory
+  }
 }
 
 function escapeHtml(s) {
@@ -136,7 +140,7 @@ function render() {
     const li = document.createElement("li");
     li.innerHTML = `
       <span class="num">${i + 1}.</span>
-      <span class="who" data-side="${r.winner}">${state.names[r.winner]}${
+      <span class="who" data-side="${r.winner}">${escapeHtml(state.names[r.winner])}${
       r.note ? ` <em style="color:var(--muted);font-style:normal">— ${escapeHtml(r.note)}</em>` : ""
     }</span>
       <span class="pts">+${r.points}</span>
@@ -148,7 +152,7 @@ function render() {
   const w = winner(state);
   if (w) {
     winnerEl.hidden = false;
-    winnerEl.textContent = `${state.names[w]} win`;
+    winnerEl.textContent = `Winner: ${state.names[w]}`;
   } else {
     winnerEl.hidden = true;
     winnerEl.textContent = "";
