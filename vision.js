@@ -275,7 +275,72 @@ export function findPipClusters(gray, W, H, opts = {}) {
       };
     })
     .filter((c) => c.pips > 0);
-  return { clusters, pipRadius };
+  return { clusters, pipRadius, pips };
+}
+
+// Chop oversized clusters into tile-sized pieces along their long axis.
+// Used as a fallback for densely packed chains where two or more tiles
+// blur into one bright region — the BFS can't separate them, but we can
+// still hand the user roughly tile-sized tap targets by slicing along
+// the cluster's long axis using a typical tile length inferred from
+// reasonable clusters in the same photo.
+export function splitOversized(clusters, allPips) {
+  const reasonable = clusters.filter((c) => {
+    const w = c.maxX - c.minX + 1;
+    const h = c.maxY - c.minY + 1;
+    if (c.pips <= 0 || c.pips > 12) return false;
+    const ratio = Math.max(w, h) / Math.min(w, h);
+    return ratio <= 3;
+  });
+  if (reasonable.length < 2) return clusters;
+  const longs = reasonable
+    .map((c) => Math.max(c.maxX - c.minX + 1, c.maxY - c.minY + 1))
+    .sort((a, b) => a - b);
+  const medianLong = longs[Math.floor(longs.length / 2)];
+
+  let working = clusters.slice();
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    const next = [];
+    for (const c of working) {
+      const w = c.maxX - c.minX + 1;
+      const h = c.maxY - c.minY + 1;
+      const longExt = Math.max(w, h);
+      const oversize = c.pips > 12 || longExt >= medianLong * 1.6;
+      if (!oversize) {
+        next.push(c);
+        continue;
+      }
+      changed = true;
+      const horiz = w >= h;
+      const numPieces = Math.max(2, Math.round(longExt / medianLong));
+      const pieceLen = longExt / numPieces;
+      for (let i = 0; i < numPieces; i++) {
+        let minX, minY, maxX, maxY;
+        if (horiz) {
+          minX = Math.round(c.minX + i * pieceLen);
+          maxX = Math.round(c.minX + (i + 1) * pieceLen) - 1;
+          minY = c.minY;
+          maxY = c.maxY;
+        } else {
+          minX = c.minX;
+          maxX = c.maxX;
+          minY = Math.round(c.minY + i * pieceLen);
+          maxY = Math.round(c.minY + (i + 1) * pieceLen) - 1;
+        }
+        let pips = 0;
+        for (const p of allPips) {
+          const cx = (p.minX + p.maxX) / 2;
+          const cy = (p.minY + p.maxY) / 2;
+          if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) pips++;
+        }
+        if (pips > 0) next.push({ pips, minX, minY, maxX, maxY, size: pips });
+      }
+    }
+    working = next;
+    if (!changed) break;
+  }
+  return working;
 }
 
 // Pair up pip clusters that look like the two halves of one domino:
@@ -348,9 +413,9 @@ function mergeRegions(a, b) {
 // for tap selection.
 export function analyzePhoto(img, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
-  // Don't upscale small inputs — that adds no information and can blur
-  // already-thin boundary lines.
-  const W = Math.min(cfg.width, img.width);
+  // Always work at the configured analysis width: the BFS needs enough
+  // pixels per pip to distinguish dividers from tile-boundary walls.
+  const W = cfg.width;
   const scale = W / img.width;
   const H = Math.max(1, Math.round(img.height * scale));
   const cnv = document.createElement("canvas");
@@ -360,9 +425,10 @@ export function analyzePhoto(img, opts = {}) {
   ctx.drawImage(img, 0, 0, W, H);
   const { data } = ctx.getImageData(0, 0, W, H);
   const gray = grayscaleFromRGBA(data);
-  const { clusters, pipRadius } = findPipClusters(gray, W, H, cfg);
+  const { clusters, pipRadius, pips } = findPipClusters(gray, W, H, cfg);
   if (clusters.length === 0) throw new NoTileError();
-  const tiles = pairHalves(clusters, pipRadius);
+  const paired = pairHalves(clusters, pipRadius);
+  const tiles = splitOversized(paired, pips);
   return {
     imageWidth: img.width,
     imageHeight: img.height,
