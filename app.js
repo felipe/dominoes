@@ -7,7 +7,7 @@ import {
   normalizeBonuses,
   DEFAULT_BONUSES,
 } from "./game.js";
-import { countPipsFromFile, NoTileError } from "./vision.js";
+import { analyzePhotoFile, NoTileError } from "./vision.js";
 
 const STORAGE_KEY = "dominoes:v1";
 
@@ -36,6 +36,12 @@ const rockerThemLabel = $("#rockerThem");
 const photoBtn = $("#photoBtn");
 const photoInput = $("#photoInput");
 const photoStatus = $("#photoStatus");
+const photoReview = $("#photoReview");
+const photoReviewImg = $("#photoReviewImg");
+const photoReviewSvg = $("#photoReviewSvg");
+const photoReviewTotal = $("#photoReviewTotal");
+const photoReviewCancel = $("#photoReviewCancel");
+const photoReviewUse = $("#photoReviewUse");
 
 let state = load();
 
@@ -200,12 +206,11 @@ photoInput.addEventListener("change", async () => {
   const file = photoInput.files && photoInput.files[0];
   if (!file) return;
   photoStatus.hidden = false;
-  photoStatus.textContent = "counting pips…";
+  photoStatus.textContent = "finding dominoes…";
   try {
-    const count = await countPipsFromFile(file);
-    roundForm.elements.points.value = String(count);
-    roundForm.elements.note.value = "photo";
-    photoStatus.textContent = `counted ${count} pip${count === 1 ? "" : "s"} — adjust if needed`;
+    const result = await analyzePhotoFile(file);
+    openPhotoReview(file, result);
+    photoStatus.hidden = true;
   } catch (err) {
     if (err instanceof NoTileError) {
       photoStatus.textContent =
@@ -217,6 +222,78 @@ photoInput.addEventListener("change", async () => {
     photoInput.value = "";
   }
 });
+
+let photoReviewUrl = null;
+
+function openPhotoReview(file, result) {
+  if (photoReviewUrl) URL.revokeObjectURL(photoReviewUrl);
+  photoReviewUrl = URL.createObjectURL(file);
+  photoReviewImg.src = photoReviewUrl;
+
+  const vb = `0 0 ${result.imageWidth} ${result.imageHeight}`;
+  photoReviewSvg.setAttribute("viewBox", vb);
+  photoReviewSvg.innerHTML = "";
+
+  // Default-select all detected tiles. User taps to deselect.
+  const longest = Math.max(result.imageWidth, result.imageHeight);
+  const fontSize = Math.max(24, Math.round(longest * 0.04));
+  for (const tile of result.tiles) {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("class", "tile selected");
+    g.dataset.pips = String(tile.pips);
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", tile.x);
+    rect.setAttribute("y", tile.y);
+    rect.setAttribute("width", tile.width);
+    rect.setAttribute("height", tile.height);
+    rect.setAttribute("rx", Math.round(Math.min(tile.width, tile.height) * 0.06));
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", tile.x + tile.width / 2);
+    text.setAttribute("y", tile.y + tile.height / 2);
+    text.setAttribute("font-size", fontSize);
+    text.textContent = String(tile.pips);
+    g.append(rect, text);
+    photoReviewSvg.appendChild(g);
+  }
+  updatePhotoReviewTotal();
+  photoReview.hidden = false;
+}
+
+function updatePhotoReviewTotal() {
+  let total = 0;
+  for (const g of photoReviewSvg.querySelectorAll("g.tile.selected")) {
+    total += Number(g.dataset.pips) || 0;
+  }
+  photoReviewTotal.textContent = String(total);
+}
+
+function closePhotoReview() {
+  photoReview.hidden = true;
+  photoReviewSvg.innerHTML = "";
+  if (photoReviewUrl) {
+    URL.revokeObjectURL(photoReviewUrl);
+    photoReviewUrl = null;
+  }
+  photoReviewImg.removeAttribute("src");
+}
+
+photoReviewSvg.addEventListener("click", (e) => {
+  const g = e.target.closest("g.tile");
+  if (!g) return;
+  g.classList.toggle("selected");
+  updatePhotoReviewTotal();
+});
+
+photoReviewUse.addEventListener("click", () => {
+  const total = Number(photoReviewTotal.textContent) || 0;
+  roundForm.elements.points.value = String(total);
+  roundForm.elements.note.value = "photo";
+  closePhotoReview();
+  photoStatus.hidden = false;
+  photoStatus.textContent = `counted ${total} pip${total === 1 ? "" : "s"} — adjust if needed`;
+});
+
+photoReviewCancel.addEventListener("click", closePhotoReview);
 
 roundForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -246,6 +323,7 @@ newGameBtn.addEventListener("click", () => {
   if (state && state.rounds.length && !confirm("start a new game? current scores will be cleared.")) return;
   state = null;
   localStorage.removeItem(STORAGE_KEY);
+  closePhotoReview();
   render();
 });
 
@@ -254,6 +332,7 @@ resetLink.addEventListener("click", (e) => {
   if (!confirm("clear all saved state?")) return;
   state = null;
   localStorage.removeItem(STORAGE_KEY);
+  closePhotoReview();
   render();
 });
 

@@ -23,11 +23,17 @@ npm run serve # python3 -m http.server 8000
 
 ## Photo pip counting
 
-The camera button on the round row opens the camera (mobile) or file picker. The `vision.js` pipeline (find bright tile-face regions → local Otsu threshold inside each region → connected components → size and roundness filter) runs entirely in the browser — no upload, no library.
+The camera button on the round row opens the camera (mobile) or file picker. The `vision.js` pipeline runs entirely in the browser — no upload, no library:
 
-**Take the photo top-down on a flat surface.** That's the supported case. If no tile face is detected, the app says "no domino tile detected — take a top-down photo on a flat surface" and waits for you to retry or enter the points manually. Treat the count as a suggestion and confirm before adding the round.
+1. Find bright tile-face regions on the photo.
+2. Stitch back the two halves of each tile that the divider line split apart.
+3. Inside each tile, run a local Otsu threshold and count blobs that look like pips (size and roundness filters).
 
-The pure helpers (`otsuArr`, `labelComponents`, `roundness`, `findTileRegions`, `countPipsFromGray`) are tested in `test/vision.test.mjs` against synthetic grayscale arrays so the pipeline doesn't regress silently.
+The photo opens a review panel: the original image with one rectangle per detected domino, each labelled with its pip count. **Tap a tile to toggle it on or off** — the running total updates live. Hit `use` to send the total into the round's points field, or `cancel` to drop it.
+
+**Take the photo top-down on a flat surface.** That's the supported case. If no tile face is detected the app says so and waits for you to retry or enter the points manually. The per-tile count is a suggestion — adjust before adding the round if a tile was misread.
+
+The pure helpers (`otsuArr`, `labelComponents`, `roundness`, `findTileRegions`, `mergeHalves`, `countPipsFromGray`) are covered by `test/vision.test.mjs` against synthetic grayscale arrays so the pipeline doesn't regress silently.
 
 ## Deploy
 

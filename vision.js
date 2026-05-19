@@ -70,11 +70,85 @@ export class NoTileError extends Error {
 
 export function countPipsFromGray(gray, W, H, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
-  const regions = findTileRegions(gray, W, H, cfg);
+  const regions = mergeHalves(findTileRegions(gray, W, H, cfg), W);
   if (regions.length === 0) throw new NoTileError();
   let total = 0;
   for (const r of regions) total += countPipsInRegion(gray, W, H, r, cfg);
   return total;
+}
+
+// A real domino tile is ~2:1 horizontal or vertical with a centerline; the
+// bright-blob detector usually returns the two halves as separate regions.
+// Stitch adjacent halves back together so the user sees one tile per tile.
+export function mergeHalves(regions, W) {
+  if (regions.length < 2) return regions.map(cloneRegion);
+  const sorted = regions.map(cloneRegion).sort((a, b) => a.minX - b.minX);
+  const merged = [];
+  for (const r of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && canMerge(last, r, W)) {
+      last.minX = Math.min(last.minX, r.minX);
+      last.minY = Math.min(last.minY, r.minY);
+      last.maxX = Math.max(last.maxX, r.maxX);
+      last.maxY = Math.max(last.maxY, r.maxY);
+      last.size += r.size;
+      continue;
+    }
+    merged.push(r);
+  }
+  return merged;
+}
+
+function cloneRegion(r) {
+  return { minX: r.minX, minY: r.minY, maxX: r.maxX, maxY: r.maxY, size: r.size };
+}
+
+function canMerge(a, b, W) {
+  const gap = b.minX - a.maxX;
+  if (gap > W * 0.03) return false;
+  const yOverlap = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
+  const minH = Math.min(a.maxY - a.minY, b.maxY - b.minY);
+  return yOverlap > minH * 0.7;
+}
+
+// Analyze a photo and return per-tile bounding boxes and pip counts in the
+// original image's coordinate system. Throws NoTileError if nothing looks
+// like a tile face. The UI uses this to overlay tiles for tap selection.
+export function analyzePhoto(img, opts = {}) {
+  const cfg = { ...DEFAULTS, ...opts };
+  const W = cfg.width;
+  const scale = W / img.width;
+  const H = Math.max(1, Math.round(img.height * scale));
+  const cnv = document.createElement("canvas");
+  cnv.width = W;
+  cnv.height = H;
+  const ctx = cnv.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, W, H);
+  const { data } = ctx.getImageData(0, 0, W, H);
+  const gray = grayscaleFromRGBA(data);
+  const regions = mergeHalves(findTileRegions(gray, W, H, cfg), W);
+  if (regions.length === 0) throw new NoTileError();
+  return {
+    imageWidth: img.width,
+    imageHeight: img.height,
+    tiles: regions.map((r) => ({
+      pips: countPipsInRegion(gray, W, H, r, cfg),
+      x: Math.round(r.minX / scale),
+      y: Math.round(r.minY / scale),
+      width: Math.round((r.maxX - r.minX + 1) / scale),
+      height: Math.round((r.maxY - r.minY + 1) / scale),
+    })),
+  };
+}
+
+export async function analyzePhotoFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    return analyzePhoto(img);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export function findTileRegions(gray, W, H, cfg = DEFAULTS) {

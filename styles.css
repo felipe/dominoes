@@ -240,6 +240,97 @@ legend { color: var(--muted); padding: 0 0.25rem; }
   color: var(--muted);
 }
 
+.photo-review {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #0c0c0c;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.photo-review[hidden] { display: none; }
+
+.photo-review-wrap {
+  position: relative;
+  width: 100%;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.photo-review-wrap img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.photo-review-wrap svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.photo-review-wrap svg .tile {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.photo-review-wrap svg .tile rect {
+  fill: rgba(0, 0, 0, 0.35);
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 3;
+  transition: stroke 80ms ease, fill 80ms ease;
+}
+
+.photo-review-wrap svg .tile.selected rect {
+  fill: rgba(245, 215, 110, 0.18);
+  stroke: var(--accent);
+}
+
+.photo-review-wrap svg .tile text {
+  fill: #fff;
+  font-weight: 700;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 4;
+}
+
+.photo-review-wrap svg .tile.selected text {
+  fill: var(--accent);
+}
+
+.photo-review-hint {
+  margin: 0.6rem 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.photo-review-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.photo-review-footer strong {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.photo-review-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
 .bonus-row {
   display: grid;
   grid-template-columns: 1fr 5rem 2rem;

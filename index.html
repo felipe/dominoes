@@ -101,6 +101,21 @@
         <div id="photoStatus" class="photo-status" hidden></div>
       </form>
 
+      <section id="photoReview" class="photo-review" hidden aria-label="select dominoes to count">
+        <div class="photo-review-wrap">
+          <img id="photoReviewImg" alt="captured dominoes photo" />
+          <svg id="photoReviewSvg" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <p class="photo-review-hint">tap the dominoes to count</p>
+        <div class="photo-review-footer">
+          <span>selected: <strong id="photoReviewTotal">0</strong> pips</span>
+          <div class="photo-review-actions">
+            <button type="button" id="photoReviewCancel" class="ghost">cancel</button>
+            <button type="button" id="photoReviewUse">use</button>
+          </div>
+        </div>
+      </section>
+
       <ol id="history" reversed></ol>
 
       <div id="winner" hidden></div>

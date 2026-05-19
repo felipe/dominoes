@@ -8,6 +8,7 @@ import {
   findTileRegions,
   countPipsFromGray,
   grayscaleFromRGBA,
+  mergeHalves,
   NoTileError,
 } from "../vision.js";
 
@@ -188,6 +189,42 @@ test("countPipsFromGray: 5-4 returns 9", () => {
 test("countPipsFromGray: 6-3 returns 9 (was a stress-test failure pre-fix)", () => {
   const { gray, W, H } = drawDomino({ patternA: P[6], patternB: P[3] });
   assert.equal(countPipsFromGray(gray, W, H), 9);
+});
+
+test("mergeHalves: stitches adjacent half-regions into one tile", () => {
+  const W = 600;
+  // Two halves of a single horizontal tile, separated by a thin divider gap.
+  const halves = [
+    { minX: 40, minY: 30, maxX: 295, maxY: 270, size: 60000 },
+    { minX: 305, minY: 30, maxX: 560, maxY: 270, size: 60000 },
+  ];
+  const merged = mergeHalves(halves, W);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(
+    { minX: merged[0].minX, maxX: merged[0].maxX, minY: merged[0].minY, maxY: merged[0].maxY },
+    { minX: 40, maxX: 560, minY: 30, maxY: 270 },
+  );
+});
+
+test("mergeHalves: keeps separate tiles apart when there is real gap", () => {
+  const W = 1200;
+  // Three tiles on a felt background. Each has internal divider already merged.
+  const tiles = [
+    { minX: 30, minY: 30, maxX: 370, maxY: 270, size: 80000 },
+    { minX: 430, minY: 30, maxX: 770, maxY: 270, size: 80000 },
+    { minX: 830, minY: 30, maxX: 1170, maxY: 270, size: 80000 },
+  ];
+  const merged = mergeHalves(tiles, W);
+  assert.equal(merged.length, 3);
+});
+
+test("mergeHalves: does not merge when y-extents don't overlap", () => {
+  const W = 600;
+  const stacked = [
+    { minX: 40, minY: 20, maxX: 295, maxY: 140, size: 30000 },
+    { minX: 305, minY: 160, maxX: 560, maxY: 280, size: 30000 },
+  ];
+  assert.equal(mergeHalves(stacked, W).length, 2);
 });
 
 test("countPipsFromGray: throws NoTileError when no tile face is found", () => {
