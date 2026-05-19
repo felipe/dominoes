@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <title>dominoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="app">
+    <header>
+      <h1>dominoes</h1>
+      <button id="newGameBtn" type="button" hidden>new game</button>
+    </header>
+
+    <section id="setup" class="card">
+      <h2>new game</h2>
+      <form id="setupForm">
+        <label>
+          your side
+          <input name="us" type="text" value="Us" autocomplete="off" required />
+        </label>
+        <label>
+          their side
+          <input name="them" type="text" value="Them" autocomplete="off" required />
+        </label>
+        <label>
+          play to
+          <input name="target" type="number" min="50" max="500" step="10" value="200" required />
+        </label>
+        <fieldset>
+          <legend>rules</legend>
+          <label class="check">
+            <input name="ruleBlocked" type="checkbox" checked />
+            count blocked-game pips to the lower hand
+          </label>
+          <label class="check">
+            <input name="ruleRoundTo5" type="checkbox" />
+            round each hand to nearest 5
+          </label>
+        </fieldset>
+        <button type="submit">start</button>
+      </form>
+    </section>
+
+    <section id="game" class="card" hidden>
+      <div class="scoreboard">
+        <div class="score" data-side="us">
+          <div class="side-name" id="usName"></div>
+          <div class="side-total" id="usTotal">0</div>
+        </div>
+        <div class="score" data-side="them">
+          <div class="side-name" id="themName"></div>
+          <div class="side-total" id="themTotal">0</div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <span>play to <strong id="targetLabel"></strong></span>
+        <span id="rulesLabel"></span>
+      </div>
+
+      <form id="roundForm">
+        <label>
+          winning side
+          <select name="winner" required>
+            <option value="us" id="winnerUs"></option>
+            <option value="them" id="winnerThem"></option>
+          </select>
+        </label>
+        <label>
+          points
+          <input name="points" type="number" min="0" max="200" step="1" required />
+        </label>
+        <label>
+          note (optional)
+          <input name="note" type="text" autocomplete="off" placeholder="e.g. capicúa" />
+        </label>
+        <button type="submit">add round</button>
+      </form>
+
+      <ol id="history" reversed></ol>
+
+      <div id="winner" hidden></div>
+    </section>
+
+    <footer>
+      <small>state saved locally in this browser. <a href="#" id="resetLink">reset</a></small>
+    </footer>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
