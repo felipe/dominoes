@@ -234,19 +234,22 @@ function openPhotoReview(file, result) {
   photoReviewSvg.setAttribute("viewBox", vb);
   photoReviewSvg.innerHTML = "";
 
-  // Default-select all detected tiles. User taps to deselect.
+  // Default state: nothing selected. User taps the tiles they want
+  // counted (end-of-match accounting flow).
   const longest = Math.max(result.imageWidth, result.imageHeight);
-  const fontSize = Math.max(24, Math.round(longest * 0.04));
+  const fontSize = Math.max(20, Math.round(longest * 0.05));
+  const stroke = Math.max(2, Math.round(longest * 0.006));
+  photoReviewSvg.style.setProperty("--tile-stroke", String(stroke));
   for (const tile of result.tiles) {
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    g.setAttribute("class", "tile selected");
+    g.setAttribute("class", "tile");
     g.dataset.pips = String(tile.pips);
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     rect.setAttribute("x", tile.x);
     rect.setAttribute("y", tile.y);
     rect.setAttribute("width", tile.width);
     rect.setAttribute("height", tile.height);
-    rect.setAttribute("rx", Math.round(Math.min(tile.width, tile.height) * 0.06));
+    rect.setAttribute("rx", Math.round(Math.min(tile.width, tile.height) * 0.08));
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
     text.setAttribute("x", tile.x + tile.width / 2);
     text.setAttribute("y", tile.y + tile.height / 2);

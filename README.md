@@ -29,7 +29,7 @@ The camera button on the round row opens the camera (mobile) or file picker. The
 2. Stitch back the two halves of each tile that the divider line split apart.
 3. Inside each tile, run a local Otsu threshold and count blobs that look like pips (size and roundness filters).
 
-The photo opens a review panel: the original image with one rectangle per detected domino, each labelled with its pip count. **Tap a tile to toggle it on or off** — the running total updates live. Hit `use` to send the total into the round's points field, or `cancel` to drop it.
+The photo opens a review panel: the original image with one outline per detected domino. **Nothing is selected by default** — this is end-of-match accounting, so you tap each domino in the loser's hand to count it. Selected tiles fill yellow and show their pip count; the running total updates live. Hit `use` to send the total into the round's points field, or `cancel` to drop it.
 
 **Take the photo top-down on a flat surface.** That's the supported case. If no tile face is detected the app says so and waits for you to retry or enter the points manually. The per-tile count is a suggestion — adjust before adding the round if a tile was misread.
 

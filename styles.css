@@ -279,19 +279,21 @@ legend { color: var(--muted); padding: 0 0.25rem; }
 }
 
 .photo-review-wrap svg .tile rect {
-  fill: rgba(0, 0, 0, 0.35);
-  stroke: rgba(255, 255, 255, 0.55);
-  stroke-width: 3;
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: #f5d76e;
+  stroke-width: var(--tile-stroke, 3);
+  stroke-dasharray: calc(var(--tile-stroke, 3) * 2) calc(var(--tile-stroke, 3) * 1.5);
   transition: stroke 80ms ease, fill 80ms ease;
+  filter: drop-shadow(0 0 calc(var(--tile-stroke, 3) * 0.6) rgba(0, 0, 0, 0.85));
 }
 
 .photo-review-wrap svg .tile.selected rect {
-  fill: rgba(245, 215, 110, 0.18);
+  fill: rgba(245, 215, 110, 0.28);
   stroke: var(--accent);
+  stroke-dasharray: none;
 }
 
 .photo-review-wrap svg .tile text {
-  fill: #fff;
   font-weight: 700;
   font-family: ui-sans-serif, system-ui, sans-serif;
   text-anchor: middle;
@@ -299,10 +301,12 @@ legend { color: var(--muted); padding: 0 0.25rem; }
   paint-order: stroke;
   stroke: #000;
   stroke-width: 4;
+  fill: var(--accent);
+  visibility: hidden;
 }
 
 .photo-review-wrap svg .tile.selected text {
-  fill: var(--accent);
+  visibility: visible;
 }
 
 .photo-review-hint {

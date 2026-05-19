@@ -8,15 +8,25 @@
 // Falls back to a global pass when no tile region is detected.
 
 export const DEFAULTS = {
-  width: 320,
-  // Tile-face filters (relative to whole image).
+  // Analysis width in pixels. Tile boundaries are thin features — too
+  // small here and they vanish below a pixel. 640 keeps the BFS cheap
+  // while preserving divider lines on real phone photos.
+  width: 640,
+  // Tile-face filters (relative to whole image). Used by the legacy
+  // findTileRegions path for synthetic light-tile-on-dark images.
   tileMinArea: 0.03,
   tileMaxArea: 0.85,
-  tileMinRectFill: 0.55, // blob area / bounding-box area
-  // Pip filters (relative to tile region area).
+  tileMinRectFill: 0.55,
+  // Pip filters used by the legacy per-tile counter.
   pipMinAreaFrac: 0.0008,
   pipMaxAreaFrac: 0.05,
   pipMinRoundness: 0.55,
+  // Pip-cluster pipeline (primary path for real photos).
+  pipDetectMinArea: 6,
+  pipDetectMaxAreaFrac: 0.003,
+  pipMedianAreaLow: 0.3,
+  pipMedianAreaHigh: 3,
+  clusterDilationFactor: 2.5, // expressed in pip radii
 };
 
 export async function countPipsFromFile(file) {
@@ -70,10 +80,10 @@ export class NoTileError extends Error {
 
 export function countPipsFromGray(gray, W, H, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
-  const regions = mergeHalves(findTileRegions(gray, W, H, cfg), W);
-  if (regions.length === 0) throw new NoTileError();
+  const { clusters } = findPipClusters(gray, W, H, cfg);
+  if (clusters.length === 0) throw new NoTileError();
   let total = 0;
-  for (const r of regions) total += countPipsInRegion(gray, W, H, r, cfg);
+  for (const c of clusters) total += c.pips;
   return total;
 }
 
@@ -111,12 +121,219 @@ function canMerge(a, b, W) {
   return yOverlap > minH * 0.7;
 }
 
-// Analyze a photo and return per-tile bounding boxes and pip counts in the
-// original image's coordinate system. Throws NoTileError if nothing looks
-// like a tile face. The UI uses this to overlay tiles for tap selection.
+// Find groups of pips that look like a half-tile or tile face. Works on
+// any background. Pipeline:
+//   1. Threshold dark pixels (Otsu).
+//   2. Label connected components and classify each: pip-shaped vs
+//      barrier (tile edges, dividers, anything thin and long).
+//   3. BFS-expand outward from each pip's pixels through bright +
+//      pip pixels, treating barrier pixels as walls. Capped at a
+//      dilation distance derived from the median pip size.
+//   4. Label the expanded mask. Each component is one cluster of pips
+//      surrounded by the same walls — typically one half of one tile.
+//   5. Count pips falling inside each cluster bbox.
+export function findPipClusters(gray, W, H, opts = {}) {
+  const cfg = { ...DEFAULTS, ...opts };
+  const t = otsuArr(gray);
+  const dark = new Uint8Array(W * H);
+  for (let i = 0; i < gray.length; i++) dark[i] = gray[i] < t ? 1 : 0;
+
+  const labels = new Int32Array(W * H).fill(-1);
+  const allBlobs = labelComponents(dark, W, H, labels);
+  const imgArea = W * H;
+
+  const isPipBlob = new Uint8Array(allBlobs.length);
+  let pips = [];
+  for (let i = 0; i < allBlobs.length; i++) {
+    const b = allBlobs[i];
+    if (b.size < cfg.pipDetectMinArea) continue;
+    if (b.size > imgArea * cfg.pipDetectMaxAreaFrac) continue;
+    if (roundness(b) < cfg.pipMinRoundness) continue;
+    isPipBlob[i] = 1;
+    pips.push({ ...b, _idx: i });
+  }
+  if (pips.length === 0) return { clusters: [], pipRadius: 0 };
+
+  const sizes = pips.map((b) => b.size).sort((a, b) => a - b);
+  const medianSize = sizes[Math.floor(sizes.length / 2)];
+  const keepIdx = new Set();
+  pips = pips.filter((b) => {
+    const ok =
+      b.size >= medianSize * cfg.pipMedianAreaLow &&
+      b.size <= medianSize * cfg.pipMedianAreaHigh;
+    if (ok) keepIdx.add(b._idx);
+    return ok;
+  });
+  if (pips.length === 0) return { clusters: [], pipRadius: 0 };
+  // Refine pip-blob membership to match the kept set.
+  isPipBlob.fill(0);
+  for (const i of keepIdx) isPipBlob[i] = 1;
+
+  // Barriers = dark pixels whose blob isn't a pip (tile edges, dividers).
+  const barrier = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    if (labels[i] >= 0 && !isPipBlob[labels[i]]) barrier[i] = 1;
+  }
+
+  const pipRadius = Math.sqrt(medianSize / Math.PI);
+  const maxDist = Math.max(
+    Math.round(pipRadius * cfg.clusterDilationFactor),
+    3,
+  );
+
+  const dist = new Int16Array(W * H).fill(-1);
+  const queue = new Int32Array(W * H);
+  let qTail = 0;
+  // Seed the BFS with every pip pixel (use the labeled image so seeds
+  // cover the whole pip blob, not just a centroid).
+  for (let i = 0; i < W * H; i++) {
+    if (labels[i] >= 0 && isPipBlob[labels[i]]) {
+      dist[i] = 0;
+      queue[qTail++] = i;
+    }
+  }
+  let qHead = 0;
+  while (qHead < qTail) {
+    const p = queue[qHead++];
+    const d = dist[p];
+    if (d >= maxDist) continue;
+    const px = p % W;
+    const py = (p - px) / W;
+    const nd = d + 1;
+    if (px > 0) {
+      const a = p - 1;
+      if (!barrier[a] && dist[a] === -1) {
+        dist[a] = nd;
+        queue[qTail++] = a;
+      }
+    }
+    if (px < W - 1) {
+      const a = p + 1;
+      if (!barrier[a] && dist[a] === -1) {
+        dist[a] = nd;
+        queue[qTail++] = a;
+      }
+    }
+    if (py > 0) {
+      const a = p - W;
+      if (!barrier[a] && dist[a] === -1) {
+        dist[a] = nd;
+        queue[qTail++] = a;
+      }
+    }
+    if (py < H - 1) {
+      const a = p + W;
+      if (!barrier[a] && dist[a] === -1) {
+        dist[a] = nd;
+        queue[qTail++] = a;
+      }
+    }
+  }
+
+  const expanded = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) if (dist[i] !== -1) expanded[i] = 1;
+
+  const groups = labelComponents(expanded, W, H);
+  const clusters = groups
+    .map((g) => {
+      let count = 0;
+      for (const pip of pips) {
+        const cx = (pip.minX + pip.maxX) / 2;
+        const cy = (pip.minY + pip.maxY) / 2;
+        if (cx >= g.minX && cx <= g.maxX && cy >= g.minY && cy <= g.maxY) {
+          count++;
+        }
+      }
+      return {
+        pips: count,
+        minX: g.minX,
+        minY: g.minY,
+        maxX: g.maxX,
+        maxY: g.maxY,
+        size: count,
+      };
+    })
+    .filter((c) => c.pips > 0);
+  return { clusters, pipRadius };
+}
+
+// Pair up pip clusters that look like the two halves of one domino:
+// adjacent along one axis (with a small gap that fits a divider), overlap
+// well along the perpendicular axis, and roughly the same size. Greedy
+// matching by shortest center-to-center distance. Unpaired clusters are
+// kept as solo tiles (e.g. a 6-0 where the blank side has no pips).
+export function pairHalves(clusters, pipRadius) {
+  if (clusters.length === 0) return [];
+  const maxGap = Math.max(pipRadius * 4, 6);
+  const pairs = [];
+  for (let i = 0; i < clusters.length; i++) {
+    for (let j = i + 1; j < clusters.length; j++) {
+      if (!areHalves(clusters[i], clusters[j], maxGap)) continue;
+      const d = centerDist(clusters[i], clusters[j]);
+      pairs.push({ i, j, d });
+    }
+  }
+  pairs.sort((a, b) => a.d - b.d);
+  const matched = new Set();
+  const tiles = [];
+  for (const { i, j } of pairs) {
+    if (matched.has(i) || matched.has(j)) continue;
+    matched.add(i);
+    matched.add(j);
+    tiles.push(mergeRegions(clusters[i], clusters[j]));
+  }
+  for (let i = 0; i < clusters.length; i++) {
+    if (!matched.has(i)) tiles.push({ ...clusters[i] });
+  }
+  return tiles;
+}
+
+function areHalves(a, b, maxGap) {
+  const aw = a.maxX - a.minX + 1;
+  const ah = a.maxY - a.minY + 1;
+  const bw = b.maxX - b.minX + 1;
+  const bh = b.maxY - b.minY + 1;
+  const horizGap = Math.max(a.minX, b.minX) - Math.min(a.maxX, b.maxX);
+  const yOverlap = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
+  const horiz = horizGap >= -2 && horizGap < maxGap && yOverlap > Math.min(ah, bh) * 0.6;
+  const vertGap = Math.max(a.minY, b.minY) - Math.min(a.maxY, b.maxY);
+  const xOverlap = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
+  const vert = vertGap >= -2 && vertGap < maxGap && xOverlap > Math.min(aw, bw) * 0.6;
+  if (!horiz && !vert) return false;
+  const areaA = aw * ah;
+  const areaB = bw * bh;
+  const ratio = Math.min(areaA, areaB) / Math.max(areaA, areaB);
+  return ratio > 0.35;
+}
+
+function centerDist(a, b) {
+  const ax = (a.minX + a.maxX) / 2;
+  const ay = (a.minY + a.maxY) / 2;
+  const bx = (b.minX + b.maxX) / 2;
+  const by = (b.minY + b.maxY) / 2;
+  return Math.hypot(ax - bx, ay - by);
+}
+
+function mergeRegions(a, b) {
+  return {
+    pips: (a.pips || 0) + (b.pips || 0),
+    minX: Math.min(a.minX, b.minX),
+    minY: Math.min(a.minY, b.minY),
+    maxX: Math.max(a.maxX, b.maxX),
+    maxY: Math.max(a.maxY, b.maxY),
+    size: (a.size || 0) + (b.size || 0),
+  };
+}
+
+// Analyze a photo and return per-cluster bounding boxes and pip counts
+// in the original image's coordinate system. Throws NoTileError if no
+// pip clusters are detected. The UI overlays one rectangle per cluster
+// for tap selection.
 export function analyzePhoto(img, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
-  const W = cfg.width;
+  // Don't upscale small inputs — that adds no information and can blur
+  // already-thin boundary lines.
+  const W = Math.min(cfg.width, img.width);
   const scale = W / img.width;
   const H = Math.max(1, Math.round(img.height * scale));
   const cnv = document.createElement("canvas");
@@ -126,17 +343,18 @@ export function analyzePhoto(img, opts = {}) {
   ctx.drawImage(img, 0, 0, W, H);
   const { data } = ctx.getImageData(0, 0, W, H);
   const gray = grayscaleFromRGBA(data);
-  const regions = mergeHalves(findTileRegions(gray, W, H, cfg), W);
-  if (regions.length === 0) throw new NoTileError();
+  const { clusters, pipRadius } = findPipClusters(gray, W, H, cfg);
+  if (clusters.length === 0) throw new NoTileError();
+  const tiles = pairHalves(clusters, pipRadius);
   return {
     imageWidth: img.width,
     imageHeight: img.height,
-    tiles: regions.map((r) => ({
-      pips: countPipsInRegion(gray, W, H, r, cfg),
-      x: Math.round(r.minX / scale),
-      y: Math.round(r.minY / scale),
-      width: Math.round((r.maxX - r.minX + 1) / scale),
-      height: Math.round((r.maxY - r.minY + 1) / scale),
+    tiles: tiles.map((c) => ({
+      pips: c.pips,
+      x: Math.round(c.minX / scale),
+      y: Math.round(c.minY / scale),
+      width: Math.round((c.maxX - c.minX + 1) / scale),
+      height: Math.round((c.maxY - c.minY + 1) / scale),
     })),
   };
 }
@@ -243,7 +461,7 @@ export function otsuArr(values) {
   return threshold;
 }
 
-export function labelComponents(mask, W, H) {
+export function labelComponents(mask, W, H, labels = null) {
   const seen = new Uint8Array(W * H);
   const blobs = [];
   const stack = [];
@@ -251,6 +469,7 @@ export function labelComponents(mask, W, H) {
     for (let x = 0; x < W; x++) {
       const idx = y * W + x;
       if (!mask[idx] || seen[idx]) continue;
+      const blobIdx = blobs.length;
       let size = 0;
       let minX = x;
       let minY = y;
@@ -262,6 +481,7 @@ export function labelComponents(mask, W, H) {
         const p = stack.pop();
         if (seen[p]) continue;
         seen[p] = 1;
+        if (labels) labels[p] = blobIdx;
         size++;
         const px = p % W;
         const py = (p - px) / W;

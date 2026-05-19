@@ -9,6 +9,7 @@ import {
   countPipsFromGray,
   grayscaleFromRGBA,
   mergeHalves,
+  pairHalves,
   NoTileError,
 } from "../vision.js";
 
@@ -171,9 +172,9 @@ test("findTileRegions: finds three tiles in a hand", () => {
 
 // ---------- end-to-end pipeline on synthetic grays ----------
 
-test("countPipsFromGray: 0-0 returns 0", () => {
+test("countPipsFromGray: throws NoTileError on 0-0 (no pips, nothing to detect)", () => {
   const { gray, W, H } = drawDomino({ patternA: P[0], patternB: P[0] });
-  assert.equal(countPipsFromGray(gray, W, H), 0);
+  assert.throws(() => countPipsFromGray(gray, W, H), NoTileError);
 });
 
 test("countPipsFromGray: 6-6 returns 12", () => {
@@ -216,6 +217,46 @@ test("mergeHalves: keeps separate tiles apart when there is real gap", () => {
   ];
   const merged = mergeHalves(tiles, W);
   assert.equal(merged.length, 3);
+});
+
+test("pairHalves: pairs two horizontally-adjacent clusters into one tile", () => {
+  const clusters = [
+    { pips: 5, size: 5, minX: 10, minY: 10, maxX: 40, maxY: 40 },
+    { pips: 4, size: 4, minX: 45, minY: 10, maxX: 75, maxY: 40 },
+  ];
+  const out = pairHalves(clusters, 3);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].pips, 9);
+  assert.deepEqual(
+    [out[0].minX, out[0].minY, out[0].maxX, out[0].maxY],
+    [10, 10, 75, 40],
+  );
+});
+
+test("pairHalves: keeps two distant clusters separate", () => {
+  const clusters = [
+    { pips: 5, size: 5, minX: 10, minY: 10, maxX: 40, maxY: 40 },
+    { pips: 4, size: 4, minX: 200, minY: 10, maxX: 230, maxY: 40 },
+  ];
+  const out = pairHalves(clusters, 3);
+  assert.equal(out.length, 2);
+});
+
+test("pairHalves: pairs vertically-stacked halves too", () => {
+  const clusters = [
+    { pips: 3, size: 3, minX: 10, minY: 10, maxX: 50, maxY: 40 },
+    { pips: 6, size: 6, minX: 10, minY: 45, maxX: 50, maxY: 75 },
+  ];
+  const out = pairHalves(clusters, 3);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].pips, 9);
+});
+
+test("pairHalves: leaves a solo cluster alone when no partner matches", () => {
+  const clusters = [{ pips: 6, size: 6, minX: 10, minY: 10, maxX: 50, maxY: 40 }];
+  const out = pairHalves(clusters, 3);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].pips, 6);
 });
 
 test("mergeHalves: does not merge when y-extents don't overlap", () => {
