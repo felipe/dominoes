@@ -1,29 +1,53 @@
 import {
   createGame,
   addRound,
+  editRound,
   undoRound,
   totals,
   winner,
+  roundTotal,
   normalizeBonuses,
   DEFAULT_BONUSES,
 } from "./game.js";
-import { analyzePhotoFile, NoTileError } from "./vision.js";
 
-const STORAGE_KEY = "dominoes:v1";
+const STORAGE_KEY = "dominoes:v2";
+const SETTINGS_KEY = "dominoes:settings:v1";
+
+const DEFAULT_SETTINGS = {
+  photoEnabled: false,
+  defaults: {
+    us: "Us",
+    them: "Them",
+    target: 200,
+    rules: { blocked: true, roundTo5: false },
+    bonuses: DEFAULT_BONUSES,
+  },
+};
 
 const $ = (sel) => document.querySelector(sel);
 
 const setupEl = $("#setup");
+const settingsEl = $("#settings");
 const gameEl = $("#game");
 const setupForm = $("#setupForm");
 const roundForm = $("#roundForm");
 const historyEl = $("#history");
 const winnerEl = $("#winner");
 const newGameBtn = $("#newGameBtn");
+const settingsBtn = $("#settingsBtn");
+const settingsBack = $("#settingsBack");
+const settingsSave = $("#settingsSave");
+const settingsSavedHint = $("#settingsSaved");
+const settingsResetAll = $("#settingsResetAll");
 const resetLink = $("#resetLink");
-const bonusRowsEl = $("#bonusRows");
-const addBonusBtn = $("#addBonusBtn");
+const setupBonusRows = $("#setupBonusRows");
+const setupAddBonusBtn = $("#setupAddBonusBtn");
+const settingsBonusRows = $("#settingsBonusRows");
+const settingsAddBonusBtn = $("#settingsAddBonusBtn");
 const bonusChipsEl = $("#bonusChips");
+const roundPreview = $("#roundPreview");
+const editIndicator = $("#editIndicator");
+const editCancel = $("#editCancel");
 
 const usNameEl = $("#usName");
 const themNameEl = $("#themName");
@@ -43,30 +67,80 @@ const photoReviewTotal = $("#photoReviewTotal");
 const photoReviewCancel = $("#photoReviewCancel");
 const photoReviewUse = $("#photoReviewUse");
 
-let state = load();
+const photoEnabledInput = $("#photoEnabled");
+const defUs = $("#defUs");
+const defThem = $("#defThem");
+const defTarget = $("#defTarget");
+const defRuleBlocked = $("#defRuleBlocked");
+const defRuleRoundTo5 = $("#defRuleRoundTo5");
 
-function load() {
+let settings = loadSettings();
+let state = loadGame();
+let attachedBonuses = []; // bonuses staged on the round form
+let editingIndex = null; // index of the round we are editing, or null
+
+function loadGame() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed.bonuses) parsed.bonuses = normalizeBonuses(DEFAULT_BONUSES);
-    return parsed;
+    return JSON.parse(raw);
   } catch {
     return null;
   }
 }
 
-function save() {
+function saveGame() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    else localStorage.removeItem(STORAGE_KEY);
   } catch {
-    // storage unavailable (quota, private mode, disabled) — keep playing in-memory
+    // storage unavailable — keep playing in-memory
   }
 }
 
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return cloneSettings(DEFAULT_SETTINGS);
+    const parsed = JSON.parse(raw);
+    return mergeSettings(parsed);
+  } catch {
+    return cloneSettings(DEFAULT_SETTINGS);
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // ignore
+  }
+}
+
+function cloneSettings(s) {
+  return JSON.parse(JSON.stringify(s));
+}
+
+function mergeSettings(parsed) {
+  const out = cloneSettings(DEFAULT_SETTINGS);
+  if (typeof parsed?.photoEnabled === "boolean") out.photoEnabled = parsed.photoEnabled;
+  const d = parsed?.defaults ?? {};
+  if (typeof d.us === "string" && d.us.trim()) out.defaults.us = d.us;
+  if (typeof d.them === "string" && d.them.trim()) out.defaults.them = d.them;
+  if (Number(d.target) >= 50) out.defaults.target = Number(d.target);
+  if (d.rules) {
+    out.defaults.rules.blocked = !!d.rules.blocked;
+    out.defaults.rules.roundTo5 = !!d.rules.roundTo5;
+  }
+  if (Array.isArray(d.bonuses)) {
+    const norm = normalizeBonuses(d.bonuses);
+    if (norm.length) out.defaults.bonuses = norm;
+  }
+  return out;
+}
+
 function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({
+  return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
@@ -75,46 +149,95 @@ function escapeHtml(s) {
   })[c]);
 }
 
-function renderBonusRows(bonuses) {
-  bonusRowsEl.innerHTML = "";
-  bonuses.forEach((b, i) => bonusRowsEl.appendChild(makeBonusRow(b.label, b.points, i)));
-}
+// ---------- bonus row helpers (shared between setup and settings) ----------
 
-function makeBonusRow(label = "", points = "", i = bonusRowsEl.children.length) {
+function makeBonusRow(label = "", points = "") {
   const row = document.createElement("div");
   row.className = "bonus-row";
   row.innerHTML = `
-    <input type="text" placeholder="label" value="${escapeHtml(String(label))}" data-bonus="label" autocomplete="off" />
-    <input type="number" min="0" max="200" placeholder="pts" value="${points === "" ? "" : Number(points)}" data-bonus="points" />
-    <button type="button" class="ghost" data-remove="${i}" aria-label="remove">×</button>
+    <input type="text" placeholder="label" value="${escapeHtml(label)}" data-bonus="label" autocomplete="off" />
+    <input type="number" min="0" max="200" placeholder="pts" value="${
+      points === "" ? "" : Number(points)
+    }" data-bonus="points" />
+    <button type="button" class="ghost" data-remove aria-label="remove">×</button>
   `;
   return row;
 }
 
-function readBonusesFromForm() {
-  const rows = bonusRowsEl.querySelectorAll(".bonus-row");
+function renderBonusRows(container, bonuses) {
+  container.innerHTML = "";
+  bonuses.forEach((b) => container.appendChild(makeBonusRow(b.label, b.points)));
+}
+
+function readBonusesFrom(container) {
   const out = [];
-  rows.forEach((row) => {
-    const label = row.querySelector('[data-bonus="label"]').value;
-    const points = row.querySelector('[data-bonus="points"]').value;
-    out.push({ label, points });
+  container.querySelectorAll(".bonus-row").forEach((row) => {
+    out.push({
+      label: row.querySelector('[data-bonus="label"]').value,
+      points: row.querySelector('[data-bonus="points"]').value,
+    });
   });
   return normalizeBonuses(out);
 }
 
-function render() {
-  if (!state) {
-    setupEl.hidden = false;
-    gameEl.hidden = true;
-    newGameBtn.hidden = true;
-    renderBonusRows(DEFAULT_BONUSES);
-    return;
-  }
+setupBonusRows.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-remove]");
+  if (btn) btn.closest(".bonus-row").remove();
+});
+settingsBonusRows.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-remove]");
+  if (btn) btn.closest(".bonus-row").remove();
+});
+setupAddBonusBtn.addEventListener("click", () => setupBonusRows.appendChild(makeBonusRow()));
+settingsAddBonusBtn.addEventListener("click", () => settingsBonusRows.appendChild(makeBonusRow()));
 
+// ---------- view switching ----------
+
+function showSetup() {
+  setupEl.hidden = false;
+  settingsEl.hidden = true;
+  gameEl.hidden = true;
+  newGameBtn.hidden = true;
+  // pre-fill from settings defaults
+  setupForm.elements.us.value = settings.defaults.us;
+  setupForm.elements.them.value = settings.defaults.them;
+  setupForm.elements.target.value = settings.defaults.target;
+  setupForm.elements.ruleBlocked.checked = settings.defaults.rules.blocked;
+  setupForm.elements.ruleRoundTo5.checked = settings.defaults.rules.roundTo5;
+  renderBonusRows(setupBonusRows, settings.defaults.bonuses);
+}
+
+function showSettings() {
   setupEl.hidden = true;
+  settingsEl.hidden = false;
+  gameEl.hidden = true;
+  newGameBtn.hidden = true;
+  photoEnabledInput.checked = !!settings.photoEnabled;
+  defUs.value = settings.defaults.us;
+  defThem.value = settings.defaults.them;
+  defTarget.value = settings.defaults.target;
+  defRuleBlocked.checked = settings.defaults.rules.blocked;
+  defRuleRoundTo5.checked = settings.defaults.rules.roundTo5;
+  renderBonusRows(settingsBonusRows, settings.defaults.bonuses);
+  settingsSavedHint.hidden = true;
+}
+
+function showGame() {
+  setupEl.hidden = true;
+  settingsEl.hidden = true;
   gameEl.hidden = false;
   newGameBtn.hidden = false;
+  renderGame();
+}
 
+function render() {
+  if (!state) showSetup();
+  else showGame();
+}
+
+// ---------- game rendering ----------
+
+function renderGame() {
   usNameEl.textContent = state.names.us;
   themNameEl.textContent = state.names.them;
   rockerUsLabel.textContent = state.names.us;
@@ -130,30 +253,11 @@ function render() {
   if (state.rules.roundTo5) ruleBits.push("round to 5");
   rulesLabel.textContent = ruleBits.join(" · ");
 
-  bonusChipsEl.innerHTML = "";
-  state.bonuses.forEach((b) => {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "chip";
-    chip.dataset.points = String(b.points);
-    chip.dataset.label = b.label;
-    chip.innerHTML = `${escapeHtml(b.label)} <span class="chip-pts">+${b.points}</span>`;
-    bonusChipsEl.appendChild(chip);
-  });
+  photoBtn.hidden = !settings.photoEnabled;
 
-  historyEl.innerHTML = "";
-  state.rounds.forEach((r, i) => {
-    const li = document.createElement("li");
-    li.innerHTML = `
-      <span class="num">${i + 1}.</span>
-      <span class="who" data-side="${r.winner}">${escapeHtml(state.names[r.winner])}${
-      r.note ? ` <em style="color:var(--muted);font-style:normal">— ${escapeHtml(r.note)}</em>` : ""
-    }</span>
-      <span class="pts">+${r.points}</span>
-      <button type="button" class="undo" data-i="${i}" aria-label="remove round">×</button>
-    `;
-    historyEl.appendChild(li);
-  });
+  renderBonusChips();
+  renderRoundPreview();
+  renderHistory();
 
   const w = winner(state);
   if (w) {
@@ -163,7 +267,182 @@ function render() {
     winnerEl.hidden = true;
     winnerEl.textContent = "";
   }
+
+  editIndicator.hidden = editingIndex === null;
 }
+
+function renderBonusChips() {
+  bonusChipsEl.innerHTML = "";
+  state.bonuses.forEach((b) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.dataset.label = b.label;
+    chip.dataset.points = String(b.points);
+    if (isBonusAttached(b)) chip.classList.add("attached");
+    chip.innerHTML = `${escapeHtml(b.label)} <span class="chip-pts">+${b.points}</span>`;
+    bonusChipsEl.appendChild(chip);
+  });
+}
+
+function isBonusAttached(b) {
+  return attachedBonuses.some((a) => a.label === b.label && a.points === b.points);
+}
+
+function renderRoundPreview() {
+  const handStr = roundForm.elements.hand.value;
+  const hand = Math.max(0, Number(handStr) || 0);
+  const parts = [];
+  if (hand > 0 || attachedBonuses.length === 0) parts.push(String(hand));
+  for (const b of attachedBonuses) parts.push(`${b.points} ${b.label}`);
+  const total = hand + attachedBonuses.reduce((s, b) => s + b.points, 0);
+  if (total === 0 && attachedBonuses.length === 0) {
+    roundPreview.hidden = true;
+    roundPreview.textContent = "";
+    return;
+  }
+  roundPreview.hidden = false;
+  roundPreview.textContent = `${parts.join(" + ")} = ${total}`;
+}
+
+function renderHistory() {
+  historyEl.innerHTML = "";
+  const lastIndex = state.rounds.length - 1;
+  state.rounds.forEach((r, i) => {
+    const li = document.createElement("li");
+    li.className = i === lastIndex ? "latest" : "";
+    const num = i + 1;
+    const breakdown = formatBreakdown(r);
+    const total = roundTotal(r);
+    const who = escapeHtml(state.names[r.winner]);
+    const actions =
+      i === lastIndex
+        ? `<button type="button" class="row-edit" data-i="${i}" aria-label="edit round">edit</button>
+           <button type="button" class="row-del" data-i="${i}" aria-label="delete round">×</button>`
+        : "";
+    li.innerHTML = `
+      <span class="num">${num}.</span>
+      <span class="who" data-side="${r.winner}">${who}</span>
+      <span class="breakdown">${escapeHtml(breakdown)}</span>
+      <span class="pts">= ${total}</span>
+      <span class="row-actions">${actions}</span>
+    `;
+    historyEl.appendChild(li);
+  });
+}
+
+function formatBreakdown(r) {
+  const parts = [];
+  if (r.hand > 0 || (r.bonuses?.length ?? 0) === 0) parts.push(String(r.hand));
+  for (const b of r.bonuses ?? []) parts.push(`${b.points} ${b.label}`);
+  return parts.join(" + ");
+}
+
+// ---------- round form behavior ----------
+
+function readHand() {
+  return Math.max(0, Number(roundForm.elements.hand.value) || 0);
+}
+
+function clearRoundForm() {
+  attachedBonuses = [];
+  roundForm.elements.hand.value = "";
+  // do not clear winner radio — usually the same opponent wins streaks; user can flip
+  photoStatus.hidden = true;
+  photoStatus.textContent = "";
+  editingIndex = null;
+}
+
+function startEdit(index) {
+  const r = state.rounds[index];
+  editingIndex = index;
+  roundForm.elements.hand.value = r.hand > 0 ? r.hand : "";
+  const radio = roundForm.elements.winner;
+  if (radio) {
+    for (const el of radio) if (el.value === r.winner) el.checked = true;
+  }
+  attachedBonuses = (r.bonuses ?? []).map((b) => ({ label: b.label, points: b.points }));
+  renderGame();
+  roundForm.elements.hand.focus();
+}
+
+function cancelEdit() {
+  clearRoundForm();
+  renderGame();
+}
+
+bonusChipsEl.addEventListener("click", (e) => {
+  const chip = e.target.closest("button.chip");
+  if (!chip) return;
+  const label = chip.dataset.label;
+  const points = Number(chip.dataset.points) || 0;
+  const idx = attachedBonuses.findIndex((b) => b.label === label && b.points === points);
+  if (idx >= 0) attachedBonuses.splice(idx, 1);
+  else attachedBonuses.push({ label, points });
+  renderBonusChips();
+  renderRoundPreview();
+});
+
+roundForm.elements.hand.addEventListener("input", () => {
+  renderRoundPreview();
+});
+
+roundForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const fd = new FormData(roundForm);
+  const winnerVal = fd.get("winner") === "us" ? "us" : "them";
+  const hand = readHand();
+  if (hand === 0 && attachedBonuses.length === 0) {
+    photoStatus.hidden = false;
+    photoStatus.textContent = "enter a hand value or attach a bonus";
+    return;
+  }
+  try {
+    if (editingIndex !== null) {
+      state = editRound(state, editingIndex, {
+        winner: winnerVal,
+        hand,
+        bonuses: attachedBonuses.slice(),
+      });
+    } else {
+      state = addRound(state, {
+        winner: winnerVal,
+        hand,
+        bonuses: attachedBonuses.slice(),
+      });
+    }
+  } catch (err) {
+    photoStatus.hidden = false;
+    photoStatus.textContent = err.message;
+    return;
+  }
+  clearRoundForm();
+  // keep winner radio set to current value for fast streak entry
+  saveGame();
+  renderGame();
+});
+
+historyEl.addEventListener("click", (e) => {
+  const editBtn = e.target.closest("button.row-edit");
+  if (editBtn) {
+    startEdit(Number(editBtn.dataset.i));
+    return;
+  }
+  const delBtn = e.target.closest("button.row-del");
+  if (delBtn) {
+    const i = Number(delBtn.dataset.i);
+    if (!confirm("delete this round?")) return;
+    state = undoRound(state, i);
+    if (editingIndex === i) clearRoundForm();
+    saveGame();
+    renderGame();
+    return;
+  }
+});
+
+editCancel.addEventListener("click", cancelEdit);
+
+// ---------- setup form ----------
 
 setupForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -176,43 +455,112 @@ setupForm.addEventListener("submit", (e) => {
       blocked: fd.get("ruleBlocked") === "on",
       roundTo5: fd.get("ruleRoundTo5") === "on",
     },
-    bonuses: readBonusesFromForm(),
+    bonuses: readBonusesFrom(setupBonusRows),
   });
-  save();
+  clearRoundForm();
+  saveGame();
   render();
 });
 
-addBonusBtn.addEventListener("click", () => {
-  bonusRowsEl.appendChild(makeBonusRow());
+// ---------- settings ----------
+
+settingsBtn.addEventListener("click", () => {
+  showSettings();
 });
 
-bonusRowsEl.addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-remove]");
-  if (!btn) return;
-  btn.closest(".bonus-row").remove();
+settingsBack.addEventListener("click", () => {
+  render();
 });
 
-bonusChipsEl.addEventListener("click", (e) => {
-  const chip = e.target.closest("button.chip");
-  if (!chip) return;
-  roundForm.elements.points.value = chip.dataset.points;
-  roundForm.elements.note.value = chip.dataset.label;
-  roundForm.elements.points.focus();
+settingsSave.addEventListener("click", () => {
+  settings = {
+    photoEnabled: !!photoEnabledInput.checked,
+    defaults: {
+      us: defUs.value.trim() || "Us",
+      them: defThem.value.trim() || "Them",
+      target: Math.max(50, Number(defTarget.value) || 200),
+      rules: {
+        blocked: !!defRuleBlocked.checked,
+        roundTo5: !!defRuleRoundTo5.checked,
+      },
+      bonuses: readBonusesFrom(settingsBonusRows),
+    },
+  };
+  saveSettings();
+  settingsSavedHint.hidden = false;
+  setTimeout(() => { settingsSavedHint.hidden = true; }, 1500);
 });
 
-photoBtn.addEventListener("click", () => photoInput.click());
+photoEnabledInput.addEventListener("change", () => {
+  // live-apply the toggle so the photo button hides/shows in the open game
+  settings.photoEnabled = !!photoEnabledInput.checked;
+  saveSettings();
+  if (!settings.photoEnabled) closePhotoReview();
+});
+
+settingsResetAll.addEventListener("click", () => {
+  if (!confirm("erase the current game AND all settings?")) return;
+  state = null;
+  settings = cloneSettings(DEFAULT_SETTINGS);
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  try { localStorage.removeItem(SETTINGS_KEY); } catch {}
+  clearRoundForm();
+  render();
+});
+
+// ---------- new game / reset ----------
+
+newGameBtn.addEventListener("click", () => {
+  if (
+    state &&
+    state.rounds.length &&
+    !confirm("start a new game? current scores will be cleared.")
+  )
+    return;
+  state = null;
+  clearRoundForm();
+  closePhotoReview();
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  render();
+});
+
+resetLink.addEventListener("click", (e) => {
+  e.preventDefault();
+  if (!confirm("clear current game?")) return;
+  state = null;
+  clearRoundForm();
+  closePhotoReview();
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  render();
+});
+
+// ---------- photo feature (lazy) ----------
+
+let visionPromise = null;
+async function loadVision() {
+  if (!visionPromise) visionPromise = import("./vision.js");
+  return visionPromise;
+}
+
+photoBtn.addEventListener("click", () => {
+  if (!settings.photoEnabled) return;
+  photoInput.click();
+});
 
 photoInput.addEventListener("change", async () => {
   const file = photoInput.files && photoInput.files[0];
   if (!file) return;
   photoStatus.hidden = false;
-  photoStatus.textContent = "finding dominoes…";
+  photoStatus.textContent = "loading…";
   try {
-    const result = await analyzePhotoFile(file);
+    const vision = await loadVision();
+    photoStatus.textContent = "finding dominoes…";
+    const result = await vision.analyzePhotoFile(file);
     openPhotoReview(file, result);
     photoStatus.hidden = true;
   } catch (err) {
-    if (err instanceof NoTileError) {
+    const vision = await loadVision().catch(() => null);
+    if (vision && err instanceof vision.NoTileError) {
       photoStatus.textContent =
         "no domino tile detected — take a top-down photo on a flat surface";
     } else {
@@ -234,8 +582,6 @@ function openPhotoReview(file, result) {
   photoReviewSvg.setAttribute("viewBox", vb);
   photoReviewSvg.innerHTML = "";
 
-  // Default state: nothing selected. User taps the tiles they want
-  // counted (end-of-match accounting flow).
   const longest = Math.max(result.imageWidth, result.imageHeight);
   const fontSize = Math.max(20, Math.round(longest * 0.05));
   const stroke = Math.max(2, Math.round(longest * 0.006));
@@ -289,54 +635,27 @@ photoReviewSvg.addEventListener("click", (e) => {
 
 photoReviewUse.addEventListener("click", () => {
   const total = Number(photoReviewTotal.textContent) || 0;
-  roundForm.elements.points.value = String(total);
-  roundForm.elements.note.value = "photo";
+  roundForm.elements.hand.value = String(total);
   closePhotoReview();
   photoStatus.hidden = false;
   photoStatus.textContent = `counted ${total} pip${total === 1 ? "" : "s"} — adjust if needed`;
+  renderRoundPreview();
 });
 
 photoReviewCancel.addEventListener("click", closePhotoReview);
 
-roundForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const fd = new FormData(roundForm);
-  state = addRound(state, {
-    winner: fd.get("winner") === "us" ? "us" : "them",
-    points: fd.get("points"),
-    note: String(fd.get("note") || ""),
-  });
-  save();
-  roundForm.reset();
-  roundForm.elements.note.value = "";
-  photoStatus.hidden = true;
-  photoStatus.textContent = "";
-  render();
+// ---------- multi-tab safety ----------
+
+window.addEventListener("storage", (e) => {
+  if (e.key === STORAGE_KEY) {
+    state = loadGame();
+    render();
+  } else if (e.key === SETTINGS_KEY) {
+    settings = loadSettings();
+    render();
+  }
 });
 
-historyEl.addEventListener("click", (e) => {
-  const btn = e.target.closest("button.undo");
-  if (!btn) return;
-  state = undoRound(state, Number(btn.dataset.i));
-  save();
-  render();
-});
-
-newGameBtn.addEventListener("click", () => {
-  if (state && state.rounds.length && !confirm("start a new game? current scores will be cleared.")) return;
-  state = null;
-  localStorage.removeItem(STORAGE_KEY);
-  closePhotoReview();
-  render();
-});
-
-resetLink.addEventListener("click", (e) => {
-  e.preventDefault();
-  if (!confirm("clear all saved state?")) return;
-  state = null;
-  localStorage.removeItem(STORAGE_KEY);
-  closePhotoReview();
-  render();
-});
+// ---------- boot ----------
 
 render();
