@@ -286,18 +286,6 @@ button.chip.attached .chip-pts { color: var(--accent); }
   font-variant-numeric: tabular-nums;
 }
 
-.edit-indicator {
-  margin-top: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  background: rgba(245, 215, 110, 0.08);
-  border: 1px solid #3a3a2a;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  color: var(--accent);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 
 .rocker {
   display: inline-grid;
@@ -335,7 +323,7 @@ button.chip.attached .chip-pts { color: var(--accent); }
   font-weight: 600;
 }
 
-.photo-status {
+.round-status {
   margin-top: 0.5rem;
   font-size: 0.8rem;
   color: var(--muted);

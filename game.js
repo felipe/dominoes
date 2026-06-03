@@ -42,16 +42,6 @@ export function applyRoundingRule(rules, points) {
   return rules && rules.roundTo5 ? Math.round(p / 5) * 5 : p;
 }
 
-function sanitizeBonusList(bonuses) {
-  if (!Array.isArray(bonuses)) return [];
-  return bonuses
-    .map((b) => ({
-      label: String(b?.label ?? "").trim(),
-      points: Math.max(0, Math.round(Number(b?.points) || 0)),
-    }))
-    .filter((b) => b.label.length > 0);
-}
-
 export function roundTotal(round) {
   const hand = Math.max(0, Number(round?.hand) || 0);
   const bonusSum = (round?.bonuses ?? []).reduce(
@@ -68,39 +58,13 @@ export function addRound(state, { winner, hand = 0, bonuses = [] }) {
   const round = {
     winner,
     hand: applyRoundingRule(state.rules, hand),
-    bonuses: sanitizeBonusList(bonuses),
+    bonuses: normalizeBonuses(bonuses),
     at: Date.now(),
   };
   if (round.hand === 0 && round.bonuses.length === 0) {
     throw new Error("round must have a hand value or at least one bonus");
   }
   return { ...state, rounds: [...state.rounds, round] };
-}
-
-export function editRound(state, index, patch) {
-  if (index < 0 || index >= state.rounds.length) {
-    throw new Error("round index out of range");
-  }
-  const current = state.rounds[index];
-  const next = { ...current };
-  if (patch.winner !== undefined) {
-    if (patch.winner !== "us" && patch.winner !== "them") {
-      throw new Error("winner must be 'us' or 'them'");
-    }
-    next.winner = patch.winner;
-  }
-  if (patch.hand !== undefined) {
-    next.hand = applyRoundingRule(state.rules, patch.hand);
-  }
-  if (patch.bonuses !== undefined) {
-    next.bonuses = sanitizeBonusList(patch.bonuses);
-  }
-  if (next.hand === 0 && next.bonuses.length === 0) {
-    throw new Error("round must have a hand value or at least one bonus");
-  }
-  const rounds = state.rounds.slice();
-  rounds[index] = next;
-  return { ...state, rounds };
 }
 
 export function undoRound(state, index) {

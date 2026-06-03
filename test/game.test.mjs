@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   createGame,
   addRound,
-  editRound,
   undoRound,
   totals,
   winner,
@@ -166,41 +165,6 @@ test("addRound: sanitizes bonus labels and points", () => {
     { label: "trim", points: 30 },
     { label: "neg", points: 0 },
   ]);
-});
-
-test("editRound: changes winner", () => {
-  let g = addRound(createGame(), { winner: "us", hand: 30 });
-  g = editRound(g, 0, { winner: "them" });
-  assert.equal(g.rounds[0].winner, "them");
-});
-
-test("editRound: changes hand and re-applies rounding", () => {
-  let g = addRound(createGame({ rules: { roundTo5: true } }), {
-    winner: "us",
-    hand: 30,
-  });
-  g = editRound(g, 0, { hand: 22 });
-  assert.equal(g.rounds[0].hand, 20);
-});
-
-test("editRound: replaces bonuses wholesale", () => {
-  let g = addRound(createGame(), {
-    winner: "us",
-    hand: 10,
-    bonuses: [{ label: "capicúa", points: 30 }],
-  });
-  g = editRound(g, 0, { bonuses: [{ label: "pase", points: 25 }] });
-  assert.deepEqual(g.rounds[0].bonuses, [{ label: "pase", points: 25 }]);
-});
-
-test("editRound: rejects empty result", () => {
-  let g = addRound(createGame(), { winner: "us", hand: 30 });
-  assert.throws(() => editRound(g, 0, { hand: 0, bonuses: [] }), /hand|bonus/);
-});
-
-test("editRound: rejects out-of-range index", () => {
-  const g = createGame();
-  assert.throws(() => editRound(g, 0, { hand: 10 }), /range/);
 });
 
 test("undoRound: removes by index without mutating prior state", () => {

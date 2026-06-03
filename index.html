@@ -51,8 +51,8 @@
 
         <fieldset>
           <legend>bonus buttons</legend>
-          <div id="setupBonusRows"></div>
-          <button type="button" id="setupAddBonusBtn" class="ghost">+ add bonus</button>
+          <div id="bonusRows"></div>
+          <button type="button" id="addBonusBtn" class="ghost">+ add bonus</button>
         </fieldset>
 
         <button type="submit">start</button>
@@ -78,39 +78,8 @@
       </fieldset>
 
       <fieldset>
-        <legend>defaults for new games</legend>
-        <p class="hint">used to pre-fill the new-game form. you can still override per match.</p>
-        <label>
-          your side
-          <input id="defUs" type="text" autocomplete="off" />
-        </label>
-        <label>
-          their side
-          <input id="defThem" type="text" autocomplete="off" />
-        </label>
-        <label>
-          play to
-          <input id="defTarget" type="number" min="50" max="500" step="10" />
-        </label>
-        <label class="check">
-          <input id="defRuleBlocked" type="checkbox" />
-          blocked-game pips to lower hand
-        </label>
-        <label class="check">
-          <input id="defRuleRoundTo5" type="checkbox" />
-          round each hand to nearest 5
-        </label>
-        <fieldset>
-          <legend>default bonus buttons</legend>
-          <div id="settingsBonusRows"></div>
-          <button type="button" id="settingsAddBonusBtn" class="ghost">+ add bonus</button>
-        </fieldset>
-        <button type="button" id="settingsSave">save defaults</button>
-        <span id="settingsSaved" class="hint inline" hidden>saved.</span>
-      </fieldset>
-
-      <fieldset>
         <legend>data</legend>
+        <p class="hint">the new-game form already remembers your last settings.</p>
         <button type="button" id="settingsResetAll" class="ghost danger">erase all data</button>
       </fieldset>
     </section>
@@ -163,13 +132,8 @@
 
         <div id="roundPreview" class="round-preview" aria-live="polite" hidden></div>
 
-        <div id="editIndicator" class="edit-indicator" hidden>
-          editing latest round
-          <button type="button" id="editCancel" class="ghost small">cancel</button>
-        </div>
-
         <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
-        <div id="photoStatus" class="photo-status" hidden></div>
+        <div id="roundStatus" class="round-status" hidden></div>
       </form>
 
       <section id="photoReview" class="photo-review" hidden aria-label="select dominoes to count">
