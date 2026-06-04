@@ -11,7 +11,15 @@
   <main id="app">
     <header>
       <h1>dominoes</h1>
-      <button id="newGameBtn" type="button" hidden>new game</button>
+      <div class="header-actions">
+        <button id="newGameBtn" type="button" class="ghost" hidden>new game</button>
+        <button id="settingsBtn" type="button" class="ghost icon" aria-label="settings" title="settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
+        </button>
+      </div>
     </header>
 
     <section id="setup" class="card">
@@ -19,20 +27,20 @@
       <form id="setupForm">
         <label>
           your side
-          <input name="us" type="text" value="Us" autocomplete="off" required />
+          <input name="us" type="text" autocomplete="off" required />
         </label>
         <label>
           their side
-          <input name="them" type="text" value="Them" autocomplete="off" required />
+          <input name="them" type="text" autocomplete="off" required />
         </label>
         <label>
           play to
-          <input name="target" type="number" min="50" max="500" step="10" value="200" required />
+          <input name="target" type="number" min="50" max="500" step="10" required />
         </label>
         <fieldset>
           <legend>rules</legend>
           <label class="check">
-            <input name="ruleBlocked" type="checkbox" checked />
+            <input name="ruleBlocked" type="checkbox" />
             count blocked-game pips to the lower hand
           </label>
           <label class="check">
@@ -49,6 +57,31 @@
 
         <button type="submit">start</button>
       </form>
+    </section>
+
+    <section id="settings" class="card" hidden>
+      <div class="section-head">
+        <h2>settings</h2>
+        <button type="button" id="settingsBack" class="ghost">done</button>
+      </div>
+
+      <fieldset>
+        <legend>experimental</legend>
+        <label class="check">
+          <input type="checkbox" id="photoEnabled" />
+          photo pip counter (beta)
+        </label>
+        <p class="hint">
+          shoots a photo of the loser's tiles and tries to count pips. accuracy
+          is rough — leave off unless you want to play with it.
+        </p>
+      </fieldset>
+
+      <fieldset>
+        <legend>data</legend>
+        <p class="hint">the new-game form already remembers your last settings.</p>
+        <button type="button" id="settingsResetAll" class="ghost danger">erase all data</button>
+      </fieldset>
     </section>
 
     <section id="game" class="card" hidden>
@@ -68,9 +101,7 @@
         <span id="rulesLabel"></span>
       </div>
 
-      <div id="bonusChips" class="chips"></div>
-
-      <form id="roundForm">
+      <form id="roundForm" aria-label="record round">
         <div class="round-row">
           <div class="rocker" role="radiogroup" aria-label="winning side">
             <input type="radio" name="winner" value="us" id="rUs" required />
@@ -79,16 +110,16 @@
             <label for="rThem" id="rockerThem">Them</label>
           </div>
           <input
-            name="points"
+            name="hand"
             type="number"
             min="0"
             max="200"
             step="1"
             inputmode="numeric"
-            placeholder="pts"
-            required
+            placeholder="hand"
+            aria-label="hand pips"
           />
-          <button type="button" id="photoBtn" class="ghost" aria-label="count pips from photo" title="count pips from photo">
+          <button type="button" id="photoBtn" class="ghost icon" aria-label="count pips from photo" title="count pips from photo" hidden>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" />
               <circle cx="12" cy="13" r="4" />
@@ -96,9 +127,13 @@
           </button>
           <button type="submit" aria-label="add round">+</button>
         </div>
-        <input type="hidden" name="note" />
+
+        <div id="bonusChips" class="chips" aria-label="bonuses to attach"></div>
+
+        <div id="roundPreview" class="round-preview" aria-live="polite" hidden></div>
+
         <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
-        <div id="photoStatus" class="photo-status" hidden></div>
+        <div id="roundStatus" class="round-status" hidden></div>
       </form>
 
       <section id="photoReview" class="photo-review" hidden aria-label="select dominoes to count">
@@ -116,13 +151,13 @@
         </div>
       </section>
 
-      <ol id="history" reversed></ol>
+      <ol id="history"></ol>
 
       <div id="winner" hidden></div>
     </section>
 
     <footer>
-      <small>state saved locally in this browser. <a href="#" id="resetLink">reset</a></small>
+      <small>state saved locally in this browser. <a href="#" id="resetLink">reset game</a></small>
     </footer>
   </main>
 

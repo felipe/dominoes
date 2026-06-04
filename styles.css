@@ -11,6 +11,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -30,14 +31,59 @@ html, body {
 
 header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
 }
 
 header h1 {
   margin: 0;
   font-size: 1.5rem;
   letter-spacing: 0.04em;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+button.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.55rem;
+  line-height: 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.section-head h2 { margin: 0; }
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.hint.inline {
+  display: inline-block;
+  margin-left: 0.5rem;
+}
+
+button.ghost.danger {
+  border-color: #6a2a2a;
+  color: #f0a0a0;
+}
+
+button.ghost.small {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
 }
 
 button, input[type="submit"] {
@@ -157,27 +203,46 @@ legend { color: var(--muted); padding: 0 0.25rem; }
 
 #history li {
   display: grid;
-  grid-template-columns: 2rem 1fr auto auto;
-  gap: 0.5rem;
+  grid-template-columns: 1.6rem minmax(3rem, auto) 1fr auto auto;
+  gap: 0.4rem 0.6rem;
   align-items: center;
-  padding: 0.45rem 0.6rem;
+  padding: 0.5rem 0.6rem;
   background: #0c0c0c;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 0.9rem;
 }
 
+#history li.latest {
+  border-color: #3a3a2a;
+  background: #131210;
+}
+
+#history li .num { color: var(--muted); }
+#history li .who { font-weight: 600; }
 #history li .who[data-side="us"] { color: var(--us); }
 #history li .who[data-side="them"] { color: var(--them); }
-#history li .pts { font-weight: 600; }
-#history li .undo {
+#history li .breakdown {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+#history li .pts { font-weight: 600; font-variant-numeric: tabular-nums; }
+#history li .row-actions {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+#history li .row-actions button {
   background: transparent;
   color: var(--muted);
-  padding: 0.1rem 0.4rem;
-  font-size: 0.8rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
   border: 1px solid var(--border);
+  border-radius: 4px;
   font-weight: 400;
 }
+#history li .row-actions button.row-del { color: #d99; }
+#history li .row-actions button:hover { border-color: var(--accent); color: var(--fg); }
 
 .round-row {
   display: grid;
@@ -190,6 +255,7 @@ legend { color: var(--muted); padding: 0 0.25rem; }
   width: 100%;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
 }
 
 .round-row button[type="submit"] {
@@ -197,6 +263,29 @@ legend { color: var(--muted); padding: 0 0.25rem; }
   font-size: 1.1rem;
   line-height: 1;
 }
+
+#bonusChips {
+  margin: 0.5rem 0 0;
+}
+
+button.chip.attached {
+  border-color: var(--accent);
+  background: rgba(245, 215, 110, 0.12);
+}
+
+button.chip.attached .chip-pts { color: var(--accent); }
+
+.round-preview {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  background: #0c0c0c;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 
 .rocker {
   display: inline-grid;
@@ -234,7 +323,7 @@ legend { color: var(--muted); padding: 0 0.25rem; }
   font-weight: 600;
 }
 
-.photo-status {
+.round-status {
   margin-top: 0.5rem;
   font-size: 0.8rem;
   color: var(--muted);

@@ -42,22 +42,29 @@ export function applyRoundingRule(rules, points) {
   return rules && rules.roundTo5 ? Math.round(p / 5) * 5 : p;
 }
 
-export function addRound(state, { winner, points, note = "" }) {
+export function roundTotal(round) {
+  const hand = Math.max(0, Number(round?.hand) || 0);
+  const bonusSum = (round?.bonuses ?? []).reduce(
+    (s, b) => s + Math.max(0, Number(b?.points) || 0),
+    0,
+  );
+  return hand + bonusSum;
+}
+
+export function addRound(state, { winner, hand = 0, bonuses = [] }) {
   if (winner !== "us" && winner !== "them") {
     throw new Error("winner must be 'us' or 'them'");
   }
-  return {
-    ...state,
-    rounds: [
-      ...state.rounds,
-      {
-        winner,
-        points: applyRoundingRule(state.rules, points),
-        note: String(note).trim(),
-        at: Date.now(),
-      },
-    ],
+  const round = {
+    winner,
+    hand: applyRoundingRule(state.rules, hand),
+    bonuses: normalizeBonuses(bonuses),
+    at: Date.now(),
   };
+  if (round.hand === 0 && round.bonuses.length === 0) {
+    throw new Error("round must have a hand value or at least one bonus");
+  }
+  return { ...state, rounds: [...state.rounds, round] };
 }
 
 export function undoRound(state, index) {
@@ -68,7 +75,7 @@ export function undoRound(state, index) {
 
 export function totals(state) {
   const t = { us: 0, them: 0 };
-  for (const r of state.rounds) t[r.winner] += r.points;
+  for (const r of state.rounds) t[r.winner] += roundTotal(r);
   return t;
 }
 

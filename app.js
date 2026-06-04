@@ -4,26 +4,51 @@ import {
   undoRound,
   totals,
   winner,
+  roundTotal,
   normalizeBonuses,
   DEFAULT_BONUSES,
 } from "./game.js";
-import { analyzePhotoFile, NoTileError } from "./vision.js";
 
-const STORAGE_KEY = "dominoes:v1";
+const STORAGE_KEY = "dominoes:v2";
+const SETTINGS_KEY = "dominoes:settings:v1";
+
+const DEFAULT_SETTINGS = {
+  photoEnabled: false,
+  defaults: {
+    us: "Us",
+    them: "Them",
+    target: 200,
+    rules: { blocked: true, roundTo5: false },
+    bonuses: DEFAULT_BONUSES,
+  },
+};
 
 const $ = (sel) => document.querySelector(sel);
 
+// ---------- DOM refs ----------
+
 const setupEl = $("#setup");
+const settingsEl = $("#settings");
 const gameEl = $("#game");
+
 const setupForm = $("#setupForm");
-const roundForm = $("#roundForm");
-const historyEl = $("#history");
-const winnerEl = $("#winner");
-const newGameBtn = $("#newGameBtn");
-const resetLink = $("#resetLink");
 const bonusRowsEl = $("#bonusRows");
 const addBonusBtn = $("#addBonusBtn");
+
+const settingsBtn = $("#settingsBtn");
+const settingsBack = $("#settingsBack");
+const settingsResetAll = $("#settingsResetAll");
+const photoEnabledInput = $("#photoEnabled");
+
+const newGameBtn = $("#newGameBtn");
+const resetLink = $("#resetLink");
+
+const roundForm = $("#roundForm");
 const bonusChipsEl = $("#bonusChips");
+const roundPreview = $("#roundPreview");
+const roundStatus = $("#roundStatus");
+const historyEl = $("#history");
+const winnerEl = $("#winner");
 
 const usNameEl = $("#usName");
 const themNameEl = $("#themName");
@@ -33,9 +58,9 @@ const targetLabel = $("#targetLabel");
 const rulesLabel = $("#rulesLabel");
 const rockerUsLabel = $("#rockerUs");
 const rockerThemLabel = $("#rockerThem");
+
 const photoBtn = $("#photoBtn");
 const photoInput = $("#photoInput");
-const photoStatus = $("#photoStatus");
 const photoReview = $("#photoReview");
 const photoReviewImg = $("#photoReviewImg");
 const photoReviewSvg = $("#photoReviewSvg");
@@ -43,30 +68,68 @@ const photoReviewTotal = $("#photoReviewTotal");
 const photoReviewCancel = $("#photoReviewCancel");
 const photoReviewUse = $("#photoReviewUse");
 
-let state = load();
+// ---------- state ----------
 
-function load() {
+let settings = loadSettings();
+let state = loadGame();
+let draftBonuses = []; // bonuses staged on the round form
+let currentView = "setup"; // 'setup' | 'settings' | 'game'
+
+// ---------- persistence ----------
+
+function loadGame() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed.bonuses) parsed.bonuses = normalizeBonuses(DEFAULT_BONUSES);
-    return parsed;
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-function save() {
+function saveGame() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return structuredClone(DEFAULT_SETTINGS);
+    return mergeSettings(JSON.parse(raw));
   } catch {
-    // storage unavailable (quota, private mode, disabled) — keep playing in-memory
+    return structuredClone(DEFAULT_SETTINGS);
   }
 }
 
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {}
+}
+
+function mergeSettings(parsed) {
+  const out = structuredClone(DEFAULT_SETTINGS);
+  if (typeof parsed?.photoEnabled === "boolean") out.photoEnabled = parsed.photoEnabled;
+  const d = parsed?.defaults ?? {};
+  if (typeof d.us === "string" && d.us.trim()) out.defaults.us = d.us;
+  if (typeof d.them === "string" && d.them.trim()) out.defaults.them = d.them;
+  if (Number(d.target) >= 50) out.defaults.target = Number(d.target);
+  if (d.rules) {
+    out.defaults.rules.blocked = !!d.rules.blocked;
+    out.defaults.rules.roundTo5 = !!d.rules.roundTo5;
+  }
+  if (Array.isArray(d.bonuses)) {
+    out.defaults.bonuses = normalizeBonuses(d.bonuses);
+  }
+  return out;
+}
+
+// ---------- utilities ----------
+
 function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({
+  return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
@@ -75,46 +138,90 @@ function escapeHtml(s) {
   })[c]);
 }
 
-function renderBonusRows(bonuses) {
-  bonusRowsEl.innerHTML = "";
-  bonuses.forEach((b, i) => bonusRowsEl.appendChild(makeBonusRow(b.label, b.points, i)));
+function setStatus(msg) {
+  if (!msg) {
+    roundStatus.hidden = true;
+    roundStatus.textContent = "";
+  } else {
+    roundStatus.hidden = false;
+    roundStatus.textContent = msg;
+  }
 }
 
-function makeBonusRow(label = "", points = "", i = bonusRowsEl.children.length) {
+function setWinnerRadio(w) {
+  for (const el of roundForm.elements.winner) el.checked = el.value === w;
+}
+
+// ---------- bonus rows (new-game form) ----------
+
+function makeBonusRow(label = "", points = "") {
   const row = document.createElement("div");
   row.className = "bonus-row";
   row.innerHTML = `
-    <input type="text" placeholder="label" value="${escapeHtml(String(label))}" data-bonus="label" autocomplete="off" />
-    <input type="number" min="0" max="200" placeholder="pts" value="${points === "" ? "" : Number(points)}" data-bonus="points" />
-    <button type="button" class="ghost" data-remove="${i}" aria-label="remove">×</button>
+    <input type="text" placeholder="label" value="${escapeHtml(label)}" data-bonus="label" autocomplete="off" />
+    <input type="number" min="0" max="200" placeholder="pts" value="${
+      points === "" ? "" : Number(points)
+    }" data-bonus="points" />
+    <button type="button" class="ghost" data-remove aria-label="remove">×</button>
   `;
   return row;
 }
 
-function readBonusesFromForm() {
-  const rows = bonusRowsEl.querySelectorAll(".bonus-row");
+function renderBonusRows(bonuses) {
+  bonusRowsEl.innerHTML = "";
+  bonuses.forEach((b) => bonusRowsEl.appendChild(makeBonusRow(b.label, b.points)));
+}
+
+function readBonuses() {
   const out = [];
-  rows.forEach((row) => {
-    const label = row.querySelector('[data-bonus="label"]').value;
-    const points = row.querySelector('[data-bonus="points"]').value;
-    out.push({ label, points });
+  bonusRowsEl.querySelectorAll(".bonus-row").forEach((row) => {
+    out.push({
+      label: row.querySelector('[data-bonus="label"]').value,
+      points: row.querySelector('[data-bonus="points"]').value,
+    });
   });
   return normalizeBonuses(out);
 }
 
+bonusRowsEl.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-remove]");
+  if (btn) btn.closest(".bonus-row").remove();
+});
+addBonusBtn.addEventListener("click", () => bonusRowsEl.appendChild(makeBonusRow()));
+
+// ---------- view router ----------
+
+function setView(view) {
+  currentView = view;
+  setupEl.hidden = view !== "setup";
+  settingsEl.hidden = view !== "settings";
+  gameEl.hidden = view !== "game";
+  newGameBtn.hidden = view !== "game";
+  if (view === "setup") populateSetup();
+  if (view === "settings") populateSettings();
+  if (view === "game") renderGame();
+}
+
 function render() {
-  if (!state) {
-    setupEl.hidden = false;
-    gameEl.hidden = true;
-    newGameBtn.hidden = true;
-    renderBonusRows(DEFAULT_BONUSES);
-    return;
-  }
+  setView(state ? "game" : "setup");
+}
 
-  setupEl.hidden = true;
-  gameEl.hidden = false;
-  newGameBtn.hidden = false;
+function populateSetup() {
+  setupForm.elements.us.value = settings.defaults.us;
+  setupForm.elements.them.value = settings.defaults.them;
+  setupForm.elements.target.value = settings.defaults.target;
+  setupForm.elements.ruleBlocked.checked = settings.defaults.rules.blocked;
+  setupForm.elements.ruleRoundTo5.checked = settings.defaults.rules.roundTo5;
+  renderBonusRows(settings.defaults.bonuses);
+}
 
+function populateSettings() {
+  photoEnabledInput.checked = !!settings.photoEnabled;
+}
+
+// ---------- game rendering ----------
+
+function renderGame() {
   usNameEl.textContent = state.names.us;
   themNameEl.textContent = state.names.them;
   rockerUsLabel.textContent = state.names.us;
@@ -130,40 +237,153 @@ function render() {
   if (state.rules.roundTo5) ruleBits.push("round to 5");
   rulesLabel.textContent = ruleBits.join(" · ");
 
+  photoBtn.hidden = !settings.photoEnabled;
+
+  renderBonusChips();
+  renderRoundPreview();
+  renderHistory();
+
+  const w = winner(state);
+  winnerEl.hidden = !w;
+  winnerEl.textContent = w ? `Winner: ${state.names[w]}` : "";
+}
+
+function bonusKey(b) {
+  return `${b.label}|${b.points}`;
+}
+
+function renderBonusChips() {
+  const attached = new Set(draftBonuses.map(bonusKey));
   bonusChipsEl.innerHTML = "";
   state.bonuses.forEach((b) => {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "chip";
-    chip.dataset.points = String(b.points);
     chip.dataset.label = b.label;
+    chip.dataset.points = String(b.points);
+    if (attached.has(bonusKey(b))) chip.classList.add("attached");
     chip.innerHTML = `${escapeHtml(b.label)} <span class="chip-pts">+${b.points}</span>`;
     bonusChipsEl.appendChild(chip);
   });
+}
 
+function renderRoundPreview() {
+  const hand = readHand();
+  if (hand === 0 && draftBonuses.length === 0) {
+    roundPreview.hidden = true;
+    roundPreview.textContent = "";
+    return;
+  }
+  const parts = [];
+  if (hand > 0 || draftBonuses.length === 0) parts.push(String(hand));
+  for (const b of draftBonuses) parts.push(`${b.points} ${b.label}`);
+  const total = hand + draftBonuses.reduce((s, b) => s + b.points, 0);
+  roundPreview.hidden = false;
+  roundPreview.textContent = `${parts.join(" + ")} = ${total}`;
+}
+
+function formatBreakdown(r) {
+  const parts = [];
+  if (r.hand > 0 || (r.bonuses?.length ?? 0) === 0) parts.push(String(r.hand));
+  for (const b of r.bonuses ?? []) parts.push(`${b.points} ${b.label}`);
+  return parts.join(" + ");
+}
+
+function renderHistory() {
   historyEl.innerHTML = "";
+  const lastIndex = state.rounds.length - 1;
   state.rounds.forEach((r, i) => {
     const li = document.createElement("li");
+    if (i === lastIndex) li.className = "latest";
+    const actions =
+      i === lastIndex
+        ? `<button type="button" class="row-edit" aria-label="edit round">edit</button>
+           <button type="button" class="row-del" aria-label="delete round">×</button>`
+        : "";
     li.innerHTML = `
       <span class="num">${i + 1}.</span>
-      <span class="who" data-side="${r.winner}">${escapeHtml(state.names[r.winner])}${
-      r.note ? ` <em style="color:var(--muted);font-style:normal">— ${escapeHtml(r.note)}</em>` : ""
-    }</span>
-      <span class="pts">+${r.points}</span>
-      <button type="button" class="undo" data-i="${i}" aria-label="remove round">×</button>
+      <span class="who" data-side="${r.winner}">${escapeHtml(state.names[r.winner])}</span>
+      <span class="breakdown">${escapeHtml(formatBreakdown(r))}</span>
+      <span class="pts">= ${roundTotal(r)}</span>
+      <span class="row-actions">${actions}</span>
     `;
     historyEl.appendChild(li);
   });
-
-  const w = winner(state);
-  if (w) {
-    winnerEl.hidden = false;
-    winnerEl.textContent = `Winner: ${state.names[w]}`;
-  } else {
-    winnerEl.hidden = true;
-    winnerEl.textContent = "";
-  }
 }
+
+// ---------- round form ----------
+
+function readHand() {
+  return Math.max(0, Number(roundForm.elements.hand.value) || 0);
+}
+
+function clearRoundForm() {
+  draftBonuses = [];
+  roundForm.elements.hand.value = "";
+  setStatus("");
+}
+
+function editLatest() {
+  const i = state.rounds.length - 1;
+  if (i < 0) return;
+  const r = state.rounds[i];
+  draftBonuses = (r.bonuses ?? []).map((b) => ({ label: b.label, points: b.points }));
+  roundForm.elements.hand.value = r.hand > 0 ? r.hand : "";
+  setWinnerRadio(r.winner);
+  state = undoRound(state, i);
+  saveGame();
+  renderGame();
+  roundForm.elements.hand.focus();
+}
+
+bonusChipsEl.addEventListener("click", (e) => {
+  const chip = e.target.closest("button.chip");
+  if (!chip) return;
+  const label = chip.dataset.label;
+  const points = Number(chip.dataset.points) || 0;
+  const idx = draftBonuses.findIndex((b) => b.label === label && b.points === points);
+  if (idx >= 0) draftBonuses.splice(idx, 1);
+  else draftBonuses.push({ label, points });
+  renderBonusChips();
+  renderRoundPreview();
+});
+
+roundForm.elements.hand.addEventListener("input", renderRoundPreview);
+
+roundForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const fd = new FormData(roundForm);
+  const winnerVal = fd.get("winner") === "us" ? "us" : "them";
+  const hand = readHand();
+  if (hand === 0 && draftBonuses.length === 0) {
+    setStatus("enter a hand value or attach a bonus");
+    return;
+  }
+  try {
+    state = addRound(state, { winner: winnerVal, hand, bonuses: draftBonuses.slice() });
+  } catch (err) {
+    setStatus(err.message);
+    return;
+  }
+  clearRoundForm();
+  saveGame();
+  renderGame();
+});
+
+historyEl.addEventListener("click", (e) => {
+  if (e.target.closest("button.row-edit")) {
+    editLatest();
+    return;
+  }
+  if (e.target.closest("button.row-del")) {
+    if (!confirm("delete this round?")) return;
+    state = undoRound(state, state.rounds.length - 1);
+    saveGame();
+    renderGame();
+  }
+});
+
+// ---------- setup form ----------
 
 setupForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -176,47 +396,94 @@ setupForm.addEventListener("submit", (e) => {
       blocked: fd.get("ruleBlocked") === "on",
       roundTo5: fd.get("ruleRoundTo5") === "on",
     },
-    bonuses: readBonusesFromForm(),
+    bonuses: readBonuses(),
   });
-  save();
+  // whatever the user just chose is the next new-game default
+  settings = {
+    ...settings,
+    defaults: {
+      us: state.names.us,
+      them: state.names.them,
+      target: state.target,
+      rules: { ...state.rules },
+      bonuses: state.bonuses,
+    },
+  };
+  clearRoundForm();
+  saveGame();
+  saveSettings();
   render();
 });
 
-addBonusBtn.addEventListener("click", () => {
-  bonusRowsEl.appendChild(makeBonusRow());
+// ---------- settings ----------
+
+settingsBtn.addEventListener("click", () => setView("settings"));
+settingsBack.addEventListener("click", render);
+
+photoEnabledInput.addEventListener("change", () => {
+  settings.photoEnabled = !!photoEnabledInput.checked;
+  saveSettings();
+  if (!settings.photoEnabled) closePhotoReview();
 });
 
-bonusRowsEl.addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-remove]");
-  if (!btn) return;
-  btn.closest(".bonus-row").remove();
+// ---------- reset paths ----------
+
+function resetGame({ wipeSettings = false, prompt } = {}) {
+  if (prompt && !confirm(prompt)) return;
+  state = null;
+  if (wipeSettings) settings = structuredClone(DEFAULT_SETTINGS);
+  clearRoundForm();
+  closePhotoReview();
+  saveGame();
+  if (wipeSettings) saveSettings();
+  render();
+}
+
+newGameBtn.addEventListener("click", () =>
+  resetGame({
+    prompt: state?.rounds.length
+      ? "start a new game? current scores will be cleared."
+      : undefined,
+  }),
+);
+
+resetLink.addEventListener("click", (e) => {
+  e.preventDefault();
+  resetGame({ prompt: "clear current game?" });
 });
 
-bonusChipsEl.addEventListener("click", (e) => {
-  const chip = e.target.closest("button.chip");
-  if (!chip) return;
-  roundForm.elements.points.value = chip.dataset.points;
-  roundForm.elements.note.value = chip.dataset.label;
-  roundForm.elements.points.focus();
-});
+settingsResetAll.addEventListener("click", () =>
+  resetGame({ wipeSettings: true, prompt: "erase the current game AND all settings?" }),
+);
 
-photoBtn.addEventListener("click", () => photoInput.click());
+// ---------- photo feature (lazy) ----------
+
+let visionMod = null;
+async function loadVision() {
+  if (!visionMod) visionMod = await import("./vision.js");
+  return visionMod;
+}
+
+photoBtn.addEventListener("click", () => {
+  if (!settings.photoEnabled) return;
+  photoInput.click();
+});
 
 photoInput.addEventListener("change", async () => {
-  const file = photoInput.files && photoInput.files[0];
+  const file = photoInput.files?.[0];
   if (!file) return;
-  photoStatus.hidden = false;
-  photoStatus.textContent = "finding dominoes…";
+  setStatus("loading…");
   try {
-    const result = await analyzePhotoFile(file);
+    const vision = await loadVision();
+    setStatus("finding dominoes…");
+    const result = await vision.analyzePhotoFile(file);
     openPhotoReview(file, result);
-    photoStatus.hidden = true;
+    setStatus("");
   } catch (err) {
-    if (err instanceof NoTileError) {
-      photoStatus.textContent =
-        "no domino tile detected — take a top-down photo on a flat surface";
+    if (visionMod && err instanceof visionMod.NoTileError) {
+      setStatus("no domino tile detected — take a top-down photo on a flat surface");
     } else {
-      photoStatus.textContent = "couldn't read that photo — enter manually";
+      setStatus("couldn't read that photo — enter manually");
     }
   } finally {
     photoInput.value = "";
@@ -230,12 +497,9 @@ function openPhotoReview(file, result) {
   photoReviewUrl = URL.createObjectURL(file);
   photoReviewImg.src = photoReviewUrl;
 
-  const vb = `0 0 ${result.imageWidth} ${result.imageHeight}`;
-  photoReviewSvg.setAttribute("viewBox", vb);
+  photoReviewSvg.setAttribute("viewBox", `0 0 ${result.imageWidth} ${result.imageHeight}`);
   photoReviewSvg.innerHTML = "";
 
-  // Default state: nothing selected. User taps the tiles they want
-  // counted (end-of-match accounting flow).
   const longest = Math.max(result.imageWidth, result.imageHeight);
   const fontSize = Math.max(20, Math.round(longest * 0.05));
   const stroke = Math.max(2, Math.round(longest * 0.006));
@@ -289,54 +553,27 @@ photoReviewSvg.addEventListener("click", (e) => {
 
 photoReviewUse.addEventListener("click", () => {
   const total = Number(photoReviewTotal.textContent) || 0;
-  roundForm.elements.points.value = String(total);
-  roundForm.elements.note.value = "photo";
+  roundForm.elements.hand.value = String(total);
   closePhotoReview();
-  photoStatus.hidden = false;
-  photoStatus.textContent = `counted ${total} pip${total === 1 ? "" : "s"} — adjust if needed`;
+  setStatus(`counted ${total} pip${total === 1 ? "" : "s"} — adjust if needed`);
+  renderRoundPreview();
 });
 
 photoReviewCancel.addEventListener("click", closePhotoReview);
 
-roundForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const fd = new FormData(roundForm);
-  state = addRound(state, {
-    winner: fd.get("winner") === "us" ? "us" : "them",
-    points: fd.get("points"),
-    note: String(fd.get("note") || ""),
-  });
-  save();
-  roundForm.reset();
-  roundForm.elements.note.value = "";
-  photoStatus.hidden = true;
-  photoStatus.textContent = "";
-  render();
+// ---------- multi-tab safety ----------
+
+window.addEventListener("storage", (e) => {
+  if (e.key === STORAGE_KEY) {
+    state = loadGame();
+    if (currentView === "game" || currentView === "setup") render();
+  } else if (e.key === SETTINGS_KEY) {
+    settings = loadSettings();
+    if (currentView === "settings") populateSettings();
+    else if (currentView === "game") renderGame();
+  }
 });
 
-historyEl.addEventListener("click", (e) => {
-  const btn = e.target.closest("button.undo");
-  if (!btn) return;
-  state = undoRound(state, Number(btn.dataset.i));
-  save();
-  render();
-});
-
-newGameBtn.addEventListener("click", () => {
-  if (state && state.rounds.length && !confirm("start a new game? current scores will be cleared.")) return;
-  state = null;
-  localStorage.removeItem(STORAGE_KEY);
-  closePhotoReview();
-  render();
-});
-
-resetLink.addEventListener("click", (e) => {
-  e.preventDefault();
-  if (!confirm("clear all saved state?")) return;
-  state = null;
-  localStorage.removeItem(STORAGE_KEY);
-  closePhotoReview();
-  render();
-});
+// ---------- boot ----------
 
 render();
