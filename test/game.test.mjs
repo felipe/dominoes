@@ -92,6 +92,23 @@ test("roundTotal: hand plus all bonus points", () => {
   assert.equal(roundTotal({ hand: 42, bonuses: [] }), 42);
 });
 
+test("roundTotal: clamps negative hand and bonus points to 0", () => {
+  assert.equal(
+    roundTotal({ hand: -10, bonuses: [{ label: "x", points: -5 }] }),
+    0,
+  );
+  assert.equal(
+    roundTotal({
+      hand: 30,
+      bonuses: [
+        { label: "ok", points: 25 },
+        { label: "bad", points: -100 },
+      ],
+    }),
+    55,
+  );
+});
+
 test("addRound: appends without mutating prior state", () => {
   const g = createGame();
   const g2 = addRound(g, {

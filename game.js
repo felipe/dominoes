@@ -45,7 +45,7 @@ export function applyRoundingRule(rules, points) {
 export function roundTotal(round) {
   const hand = Math.max(0, Number(round?.hand) || 0);
   const bonusSum = (round?.bonuses ?? []).reduce(
-    (s, b) => s + (Number(b?.points) || 0),
+    (s, b) => s + Math.max(0, Number(b?.points) || 0),
     0,
   );
   return hand + bonusSum;

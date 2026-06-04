@@ -121,8 +121,7 @@ function mergeSettings(parsed) {
     out.defaults.rules.roundTo5 = !!d.rules.roundTo5;
   }
   if (Array.isArray(d.bonuses)) {
-    const norm = normalizeBonuses(d.bonuses);
-    if (norm.length) out.defaults.bonuses = norm;
+    out.defaults.bonuses = normalizeBonuses(d.bonuses);
   }
   return out;
 }
@@ -407,7 +406,7 @@ setupForm.addEventListener("submit", (e) => {
       them: state.names.them,
       target: state.target,
       rules: { ...state.rules },
-      bonuses: state.bonuses.length ? state.bonuses : DEFAULT_BONUSES,
+      bonuses: state.bonuses,
     },
   };
   clearRoundForm();
