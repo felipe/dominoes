@@ -121,7 +121,6 @@ test("addRound: appends without mutating prior state", () => {
   assert.equal(g2.rounds[0].winner, "us");
   assert.equal(g2.rounds[0].hand, 30);
   assert.deepEqual(g2.rounds[0].bonuses, [{ label: "capicúa", points: 30 }]);
-  assert.equal(typeof g2.rounds[0].at, "number");
 });
 
 test("addRound: multiple bonuses stack individually", () => {

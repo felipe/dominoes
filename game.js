@@ -23,7 +23,6 @@ export function createGame({
     },
     bonuses: normalizeBonuses(bonuses ?? DEFAULT_BONUSES),
     rounds: [],
-    startedAt: Date.now(),
   };
 }
 
@@ -59,7 +58,6 @@ export function addRound(state, { winner, hand = 0, bonuses = [] }) {
     winner,
     hand: applyRoundingRule(state.rules, hand),
     bonuses: normalizeBonuses(bonuses),
-    at: Date.now(),
   };
   if (round.hand === 0 && round.bonuses.length === 0) {
     throw new Error("round must have a hand value or at least one bonus");
